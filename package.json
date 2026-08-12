@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "build:pages": "VITE_BASE=/moov/ npm run build",
-    "preview:pages": "npm run build:pages && VITE_BASE=/moov/ vite preview --port 4173",
+    "build:pages": "VITE_BASE=/Moov/ npm run build",
+    "preview:pages": "npm run build:pages && VITE_BASE=/Moov/ vite preview --port 4173",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {

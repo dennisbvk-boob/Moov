@@ -137,7 +137,7 @@ thing before pushing:
 npm run preview:pages
 ```
 
-That builds with `VITE_BASE=/moov/` and serves it at http://localhost:4173/moov/.
+That builds with `VITE_BASE=/Moov/` and serves it at http://localhost:4173/Moov/.
 
 ---
 
