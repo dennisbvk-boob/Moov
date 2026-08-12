@@ -148,11 +148,29 @@ create policy households_insert on households for insert to authenticated
   with check (coalesce(auth.jwt() ->> 'email', '') <> '');
 create policy households_update on households for update using (is_member(id)) with check (is_member(id));
 
+-- definer, like is_member(), so the policy can read `members` without recursing
+create or replace function household_is_empty(h uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select not exists (select 1 from members m where m.household_id = h);
+$$;
+
 drop policy if exists members_read   on members;
 drop policy if exists members_insert on members;
 create policy members_read   on members for select using (is_member(household_id));
--- you may only ever add yourself; joining someone else's plan goes through join_household()
-create policy members_insert on members for insert to authenticated with check (user_id = auth.uid());
+-- Adding yourself is only allowed to the *first* member of a household — i.e. the
+-- person who just created it. Checking `user_id = auth.uid()` alone was not enough:
+-- it constrained who you add but not which plan you add them to, so anyone who
+-- learned a household's uuid could insert themselves into a free slot and become a
+-- member, skipping join_household() and its invited-email check entirely. Every
+-- later member goes through join_household(), where the code and the invited
+-- address are both required.
+create policy members_insert on members for insert to authenticated
+  with check (user_id = auth.uid() and household_is_empty(household_id));
 
 drop policy if exists tasks_all on tasks;
 create policy tasks_all on tasks for all using (is_member(household_id)) with check (is_member(household_id));
