@@ -162,6 +162,20 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
           onClick={() => {
             if (
               confirm(
+                `Alle taken en partijen wissen (${store.tasks.length} taken, ${store.parties.length} partijen)? Adres en verhuisdag blijven staan. Dit kun je niet terugdraaien.`,
+              )
+            ) {
+              store.clearAllData();
+            }
+          }}
+        >
+          <span style={{ color: C.clay }}>Alle taken en partijen wissen</span>
+        </Button>
+        <Button
+          tone="quiet"
+          onClick={() => {
+            if (
+              confirm(
                 'Dit plan van dit toestel loskoppelen? Met de code kun je er later weer bij.',
               )
             ) {
