@@ -42,25 +42,15 @@ export function looksLikeEmail(email: string): boolean {
 }
 
 /**
- * Step 1 of logging in: mail a six-digit code to the address.
- * Requires the Magic Link email template to contain {{ .Token }} — see README.
+ * Log in with an email + password that already exists in Supabase — accounts
+ * are created by hand in the dashboard (Authentication → Users → Add user),
+ * so there is no self-signup path and no email to deliver.
  */
-export async function sendLoginCode(email: string): Promise<void> {
+export async function login(email: string, password: string): Promise<Session> {
   if (!supabase) throw new Error('Geen database ingesteld.');
-  const { error } = await supabase.auth.signInWithOtp({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email: normalizeEmail(email),
-    options: { shouldCreateUser: true },
-  });
-  if (error) throw new Error(translateAuthError(error.message));
-}
-
-/** Step 2: exchange that code for a session on this device. */
-export async function verifyLoginCode(email: string, token: string): Promise<Session> {
-  if (!supabase) throw new Error('Geen database ingesteld.');
-  const { data, error } = await supabase.auth.verifyOtp({
-    email: normalizeEmail(email),
-    token: token.trim(),
-    type: 'email',
+    password,
   });
   if (error) throw new Error(translateAuthError(error.message));
   const u = data.user;
@@ -79,9 +69,8 @@ function translateAuthError(message: string): string {
     return 'Geen verbinding met de server. Controleer je internet en probeer opnieuw.';
   if (m.includes('rate limit') || m.includes('too many') || m.includes('after'))
     return 'Te veel pogingen. Wacht een minuut en probeer het opnieuw.';
-  if (m.includes('expired')) return 'Die code is verlopen. Vraag een nieuwe aan.';
-  if (m.includes('invalid') || m.includes('token'))
-    return 'Die code klopt niet. Kijk nog eens in je mail.';
+  if (m.includes('invalid login credentials'))
+    return 'E-mailadres of wachtwoord klopt niet.';
   if (m.includes('signups not allowed') || m.includes('not authorized'))
     return 'Dit e-mailadres mag nog niet inloggen. Controleer de Supabase-instellingen.';
   return message;
