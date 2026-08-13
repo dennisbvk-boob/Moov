@@ -4,6 +4,9 @@ import { Button, Field, inputStyle } from '../components/ui';
 import { useStore, useToday } from '../store';
 import { looksLikeEmail, syncEnabled } from '../lib/supabase';
 import { addDays } from '../lib/dates';
+import { generateAiPlan, type WizardAnswers } from '../lib/wizard';
+
+type PlanType = 'seed' | 'empty' | 'ai';
 
 export function Onboarding() {
   const store = useStore();
@@ -17,7 +20,16 @@ export function Onboarding() {
   const [yourName, setYourName] = useState('');
   const [partnerName, setPartnerName] = useState('');
   const [partnerEmail, setPartnerEmail] = useState('');
+  const [planType, setPlanType] = useState<PlanType>('seed');
   const [code, setCode] = useState('');
+
+  const [homeType, setHomeType] = useState('tussenwoning');
+  const [rooms, setRooms] = useState('4');
+  const [renovation, setRenovation] = useState(false);
+  const [packing, setPacking] = useState<'zelf' | 'verhuisbedrijf'>('zelf');
+  const [diy, setDiy] = useState<'zelf' | 'uitbesteden'>('zelf');
+  const [kidsOrPets, setKidsOrPets] = useState(false);
+  const [notes, setNotes] = useState('');
 
   const signedIn = !!store.session;
   const partnerEmailOk = !signedIn || looksLikeEmail(partnerEmail);
@@ -141,9 +153,81 @@ export function Onboarding() {
             {signedIn
               ? 'Alleen dit adres kan straks meedoen — mét de plancode die je erna te zien krijgt. Je kunt het later nog wijzigen. '
               : ''}
-            Je begint met een compleet voorbeeldplan van 32 taken rond die verhuisdag — schuif,
-            verwijder en vul aan tot het jullie plan is.
+            {planType === 'empty' &&
+              'Je begint met een leeg plan — geen voorbeeldtaken, alleen wat jullie zelf toevoegen.'}
+            {planType === 'seed' &&
+              'Je begint met een compleet voorbeeldplan van 32 taken rond die verhuisdag — schuif, verwijder en vul aan tot het jullie plan is.'}
+            {planType === 'ai' &&
+              'Beantwoord een paar vragen hieronder en de AI stelt een plan op maat samen.'}
           </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <Radio label="Voorbeeldplan (32 taken)" checked={planType === 'seed'} onClick={() => setPlanType('seed')} />
+            <Radio label="Begin leeg" checked={planType === 'empty'} onClick={() => setPlanType('empty')} />
+            <Radio
+              label="Laat de AI het plan invullen"
+              checked={planType === 'ai'}
+              onClick={() => setPlanType('ai')}
+              disabled={!signedIn || !syncEnabled}
+            />
+            {!signedIn && (
+              <div style={{ font: `400 11.5px/1.4 ${SANS}`, color: C.ghost, paddingLeft: 26 }}>
+                Log in om de AI-wizard te gebruiken.
+              </div>
+            )}
+          </div>
+
+          {planType === 'ai' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <Field label="TYPE WONING">
+                <select
+                  value={homeType}
+                  onChange={(e) => setHomeType(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="appartement">Appartement</option>
+                  <option value="tussenwoning">Tussenwoning</option>
+                  <option value="hoekwoning">Hoekwoning</option>
+                  <option value="vrijstaand">Vrijstaand huis</option>
+                </select>
+              </Field>
+              <Field label="AANTAL KAMERS">
+                <input value={rooms} onChange={(e) => setRooms(e.target.value)} style={inputStyle} />
+              </Field>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={renovation} onChange={(e) => setRenovation(e.target.checked)} />
+                <span style={{ font: `400 13px ${SANS}`, color: C.muted }}>Er is verbouwing nodig</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={kidsOrPets} onChange={(e) => setKidsOrPets(e.target.checked)} />
+                <span style={{ font: `400 13px ${SANS}`, color: C.muted }}>Kinderen of huisdieren</span>
+              </label>
+              <Field label="INPAKKEN EN VERHUIZEN">
+                <select
+                  value={packing}
+                  onChange={(e) => setPacking(e.target.value as typeof packing)}
+                  style={inputStyle}
+                >
+                  <option value="zelf">Doen we zelf</option>
+                  <option value="verhuisbedrijf">Via een verhuisbedrijf</option>
+                </select>
+              </Field>
+              <Field label="KLUSSEN (SCHILDEREN, VLOEREN)">
+                <select value={diy} onChange={(e) => setDiy(e.target.value as typeof diy)} style={inputStyle}>
+                  <option value="zelf">Doen we zelf</option>
+                  <option value="uitbesteden">Besteden we uit</option>
+                </select>
+              </Field>
+              <Field label="EXTRA OPMERKINGEN (OPTIONEEL)">
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              </Field>
+            </div>
+          )}
 
           {error && <Err text={error} />}
 
@@ -151,18 +235,44 @@ export function Onboarding() {
             disabled={busy || !newPlanReady}
             tone={newPlanReady ? 'primary' : 'muted'}
             onClick={() =>
-              run(() =>
-                store.createHousehold({
-                  address: address.trim(),
-                  moveDate,
-                  yourName: yourName.trim(),
-                  partnerName: partnerName.trim(),
-                  partnerEmail: partnerEmail.trim(),
-                }),
-              )
+              run(async () => {
+                if (planType === 'ai') {
+                  const id = crypto.randomUUID();
+                  const answers: WizardAnswers = {
+                    address: address.trim(),
+                    moveDate,
+                    homeType,
+                    rooms,
+                    renovation,
+                    packing,
+                    diy,
+                    kidsOrPets,
+                    notes: notes.trim(),
+                  };
+                  const aiTasks = await generateAiPlan(id, answers);
+                  await store.createHousehold({
+                    address: address.trim(),
+                    moveDate,
+                    yourName: yourName.trim(),
+                    partnerName: partnerName.trim(),
+                    partnerEmail: partnerEmail.trim(),
+                    id,
+                    aiTasks,
+                  });
+                } else {
+                  await store.createHousehold({
+                    address: address.trim(),
+                    moveDate,
+                    yourName: yourName.trim(),
+                    partnerName: partnerName.trim(),
+                    partnerEmail: partnerEmail.trim(),
+                    startEmpty: planType === 'empty',
+                  });
+                }
+              })
             }
           >
-            {busy ? 'Bezig…' : 'Plan aanmaken'}
+            {busy ? (planType === 'ai' ? 'AI stelt je plan samen…' : 'Bezig…') : 'Plan aanmaken'}
           </Button>
           <Button tone="quiet" onClick={() => setMode('start')}>
             Terug
@@ -237,6 +347,28 @@ export function Onboarding() {
         </div>
       )}
     </div>
+  );
+}
+
+function Radio({ label, checked, onClick, disabled }: {
+  label: string;
+  checked: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.45 : 1,
+      }}
+    >
+      <input type="radio" checked={checked} disabled={disabled} onChange={onClick} />
+      <span style={{ font: `400 13px ${SANS}`, color: C.muted }}>{label}</span>
+    </label>
   );
 }
 

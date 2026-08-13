@@ -109,7 +109,14 @@ interface Store extends Persisted {
     yourName: string;
     partnerName: string;
     partnerEmail: string;
+    startEmpty?: boolean;
+    /** Pre-generated household id — needed when tasks were built (e.g. by the AI wizard) before the household exists. */
+    id?: string;
+    /** Use these tasks instead of the seed plan (or an empty plan). */
+    aiTasks?: Task[];
   }): Promise<void>;
+  /** Delete every task and party in the current plan. The plan itself (address, date, names) stays. */
+  clearAllData(): void;
   joinHousehold(code: string, yourName: string): Promise<void>;
   signOut(): Promise<void>;
   toggleTask(id: string): void;
@@ -539,8 +546,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const createHousehold = useCallback<Store['createHousehold']>(
-    async ({ address, moveDate, yourName, partnerName, partnerEmail }) => {
-      const id = crypto.randomUUID();
+    async ({ address, moveDate, yourName, partnerName, partnerEmail, startEmpty, id: presetId, aiTasks }) => {
+      const id = presetId ?? crypto.randomUUID();
       const household: Household = {
         id,
         address,
@@ -550,7 +557,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         name_b: partnerName,
         invited_email: partnerEmail ? normalizeEmail(partnerEmail) : null,
       };
-      const { parties, tasks } = buildSeedPlan(id, moveDate);
+      const { parties, tasks }: { parties: Party[]; tasks: Task[] } = aiTasks
+        ? { parties: [], tasks: aiTasks }
+        : startEmpty
+          ? { parties: [], tasks: [] }
+          : buildSeedPlan(id, moveDate);
 
       if (supabase && session) {
         const { error } = await supabase.from('households').insert(household);
@@ -786,6 +797,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [update, nudge],
   );
 
+  /** Wipe every task, party and attachment — used to clear the seeded example plan. */
+  const clearAllData = useCallback<Store['clearAllData']>(() => {
+    const cur = stateRef.current;
+    for (const a of cur.attachments) void deleteBlob(a.id);
+    const paths = cur.attachments.map((a) => a.path).filter((p): p is string => !!p);
+    if (supabase && paths.length) void supabase.storage.from('bijlagen').remove(paths);
+
+    update((p) => ({
+      ...p,
+      tasks: [],
+      parties: [],
+      attachments: [],
+      picks: {},
+      reserved: {},
+      dirtyTasks: [],
+      dirtyParties: [],
+      dirtyPicks: [],
+      pendingUploads: [],
+      deletedTasks: [...new Set([...p.deletedTasks, ...p.tasks.map((t) => t.id)])],
+      deletedParties: [...new Set([...p.deletedParties, ...p.parties.map((x) => x.id)])],
+    }));
+    logActivity('wiste het voorbeeldplan leeg');
+    nudge();
+  }, [update, nudge, logActivity]);
+
   const addParty = useCallback<Store['addParty']>(
     (input) => {
       const cur = stateRef.current;
@@ -911,6 +947,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       meName,
       partnerName,
       createHousehold,
+      clearAllData,
       joinHousehold,
       signOut,
       toggleTask,
@@ -935,6 +972,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     authChecked,
     session,
     createHousehold,
+    clearAllData,
     joinHousehold,
     signOut,
     toggleTask,
