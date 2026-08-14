@@ -9,6 +9,7 @@ import { TaskSheet } from './components/TaskSheet';
 import { JobSheet } from './components/JobSheet';
 import { AddTaskSheet } from './components/AddTaskSheet';
 import { SettingsSheet } from './components/SettingsSheet';
+import { AiAssistantSheet } from './components/AiAssistantSheet';
 import { AuthGate } from './screens/AuthGate';
 import { Onboarding } from './screens/Onboarding';
 import { Today } from './screens/Today';
@@ -94,6 +95,7 @@ function Plan() {
   const [openJob, setOpenJob] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [assistant, setAssistant] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
   // Jump back to the top when switching tabs — otherwise you land mid-list.
@@ -146,6 +148,27 @@ function Plan() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
+          {store.session && (
+            <button
+              onClick={() => setAssistant(true)}
+              aria-label="AI-assistent"
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                background: C.greenSoft,
+                color: C.green,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                font: `700 11px ${SANS}`,
+                letterSpacing: '.02em',
+                lineHeight: 1,
+              }}
+            >
+              AI
+            </button>
+          )}
           <button
             onClick={() => setAdding(true)}
             aria-label="Taak toevoegen"
@@ -196,6 +219,7 @@ function Plan() {
       <JobSheet jobId={openJob} onClose={() => setOpenJob(null)} />
       <AddTaskSheet open={adding} onClose={() => setAdding(false)} />
       <SettingsSheet open={settings} onClose={() => setSettings(false)} />
+      <AiAssistantSheet open={assistant} onClose={() => setAssistant(false)} />
     </>
   );
 }

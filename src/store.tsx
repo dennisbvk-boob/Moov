@@ -137,6 +137,8 @@ interface Store extends Persisted {
     patch: Partial<Pick<Household, 'address' | 'move_date' | 'name_a' | 'name_b' | 'invited_email'>>,
   ): void;
   leave(): void;
+  /** Permanently delete the current household and everyone/everything in it. Stays logged in. */
+  deleteHousehold(): Promise<void>;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -931,6 +933,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setStatus(syncEnabled ? 'connecting' : 'local');
   }, []);
 
+  /**
+   * Permanently delete this household — cascades to members, tasks, parties,
+   * picks, reservations, activity and attachment rows server-side. Stays
+   * logged in so a new plan (e.g. via the AI wizard) can start right away.
+   */
+  const deleteHousehold = useCallback(async () => {
+    const cur = stateRef.current;
+    if (!cur.household) return;
+    if (supabase && session) {
+      const { error } = await supabase.from('households').delete().eq('id', cur.household.id);
+      if (error) throw new Error(error.message);
+    }
+    localStorage.removeItem(STORAGE_KEY);
+    void clearBlobs();
+    setS(EMPTY);
+    setStatus(syncEnabled ? 'connecting' : 'local');
+  }, [session]);
+
   const value = useMemo<Store>(() => {
     const meName = s.household ? (s.slot === 'a' ? s.household.name_a : s.household.name_b) : 'Jij';
     const partnerName = s.household
@@ -964,6 +984,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reserveJob,
       updateHousehold,
       leave,
+      deleteHousehold,
     };
   }, [
     s,
@@ -989,6 +1010,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     reserveJob,
     updateHousehold,
     leave,
+    deleteHousehold,
   ]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
