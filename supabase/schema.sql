@@ -141,12 +141,16 @@ alter table parties           enable row level security;
 drop policy if exists households_read   on households;
 drop policy if exists households_insert on households;
 drop policy if exists households_update on households;
+drop policy if exists households_delete on households;
 create policy households_read   on households for select using (is_member(id));
 -- only an email-verified account may create a plan; a token without an email
 -- claim (e.g. a leftover anonymous session) cannot
 create policy households_insert on households for insert to authenticated
   with check (coalesce(auth.jwt() ->> 'email', '') <> '');
 create policy households_update on households for update using (is_member(id)) with check (is_member(id));
+-- any member can delete the whole plan to start over; cascades wipe members,
+-- tasks, parties, picks, reservations, activity and attachments with it
+create policy households_delete on households for delete using (is_member(id));
 
 -- definer, like is_member(), so the policy can read `members` without recursing
 create or replace function household_is_empty(h uuid)

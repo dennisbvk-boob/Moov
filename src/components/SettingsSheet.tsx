@@ -8,7 +8,28 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
   const store = useStore();
   const h = store.household;
   const [copied, setCopied] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   if (!open || !h) return null;
+
+  const deleteHousehold = async () => {
+    if (
+      !confirm(
+        `Dit hele plan definitief verwijderen? Alle taken, partijen en bijlagen van ${h.name_a} en ${h.name_b} gaan mee. Dit kun je niet terugdraaien.`,
+      )
+    )
+      return;
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await store.deleteHousehold();
+      onClose();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Verwijderen lukte niet.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const share = async () => {
     const text = `Doe mee met ons verhuisplan op Moov.nl. Open ${location.origin} en vul code ${h.join_code} in.`;
@@ -186,6 +207,18 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
         >
           <span style={{ color: C.clay }}>Loskoppelen van dit toestel</span>
         </Button>
+        {store.session && (
+          <Button tone="quiet" onClick={deleteHousehold} disabled={deleting}>
+            <span style={{ color: C.clay }}>
+              {deleting ? 'Bezig met verwijderen…' : 'Plan definitief verwijderen'}
+            </span>
+          </Button>
+        )}
+        {deleteError && (
+          <div style={{ font: `400 11.5px/1.4 ${SANS}`, color: C.clay, textAlign: 'center' }}>
+            {deleteError}
+          </div>
+        )}
       </div>
     </Sheet>
   );
