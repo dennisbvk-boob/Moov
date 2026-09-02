@@ -16,7 +16,7 @@ moov/
   src/
     App.tsx              shell: header, tabs, sheet routing
     store.tsx            state, local persistence, Supabase sync engine
-    seed.ts              the 32-task starter plan + the 5 DIY jobs
+    jobs.ts              the 5 DIY jobs and their tool lists (reference data)
     theme.ts             design tokens, lifted from the prototype
     screens/             AuthGate · Onboarding · Today · Timeline · List · Jobs · Money
     components/          sheets (task, job, party, settings), attachments, tab bar
@@ -36,6 +36,9 @@ cd moov && npm install && npm run dev
 Open http://localhost:5173. It works immediately — the plan is stored on that one device.
 Everything below is about making two devices share one plan.
 
+A new plan is always **empty**. Nothing is ever pre-filled: every task, invoice and party is
+either typed in by hand or produced by the AI wizard from your own answers.
+
 ---
 
 ## 2. Set up the database (~5 minutes)
@@ -47,28 +50,26 @@ You need a free Supabase project. I can't create the account for you — these s
 2. **SQL Editor → New query** → paste all of [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
    That creates the tables, locks them down with row-level security, and enables realtime.
    Re-running it later is safe.
-3. **Authentication → Sign In / Providers → Email → enabled** (it is by default).
-   If you previously turned on *Anonymous sign-ins*, turn it back **off** — the app no longer
-   uses it.
-4. **Authentication → Emails → Templates.** Login codes are six digits, so the mail has to
-   actually contain one. In **both** the *Magic Link* and the *Confirm signup* templates, add:
-
-   ```html
-   <p>Je code voor Moov.nl: <strong>{{ .Token }}</strong></p>
-   ```
-
-   Without this you'll get a clickable link instead of a code and the app can't verify it.
+3. **Authentication → Sign In / Providers → Email → enabled** (it is by default). Leave
+   *Anonymous sign-ins* **off** — the app doesn't use them.
+4. **Turn self-signup off:** *Authentication → Sign In / Providers → Email → Allow new users to
+   sign up* → **off**. Only accounts you create by hand can then get in.
 5. **Project Settings → API**: copy the *Project URL* and the *anon public* key.
 6. In `moov/`, copy `.env.example` to `.env.local` and paste both values in.
 7. Restart `npm run dev`.
 
 A green dot appears next to `MOOV.NL` in the header when it's syncing.
 
-> **Email sending:** Supabase's built-in mailer is rate-limited to a handful of messages per
-> hour and is meant for testing. That's usually fine here — you log in once per phone and the
-> session persists — but if codes stop arriving, that's why. For something dependable, hook up
-> a custom SMTP under **Project Settings → Authentication → SMTP Settings** (Resend, Postmark
-> and Brevo all have free tiers).
+### Giving someone access
+
+There is no sign-up screen — you hand out accounts:
+
+**Authentication → Users → Add user → Create new user.** Fill in their email address and a
+password, tick **Auto Confirm User**, and pass those two on. That's it: they open the app, log
+in, and either start their own plan or join yours with a code. Every account only ever sees the
+plans it is a member of; row-level security in the database enforces that, not the UI.
+
+Password resets go the same way — **Users → ⋯ → Reset password** — or just set a new one.
 
 > **Attachments:** the schema also creates the private `bijlagen` storage bucket and its access
 > rules. Nothing to click in the dashboard — running the SQL is enough.
@@ -144,21 +145,22 @@ That builds with `VITE_BASE=/Moov/` and serves it at http://localhost:4173/Moov/
 ## 4. Get it onto both phones
 
 1. Open the deployed URL in **Safari** on your iPhone.
-2. Log in: type your email, read the six-digit code from your inbox, type it in. Once per phone —
-   the session is stored on the device.
+2. Log in with the email address and password you were given. Once per phone — the session is
+   stored on the device.
 3. Share button → **Add to Home Screen**.
 4. It now behaves like an app: own icon, full screen, no address bar, works offline.
 
-To bring your partner in, you need **two** things to line up:
+To bring your partner in, send them the plan's **6-character code**: **Settings** (tap the two
+avatars, top right) → **Uitnodiging delen**. They open the same URL, log in with their own
+account, tap *"Ik heb een code van mijn partner"*, and enter the code. Anything either of you
+ticks shows up on the other phone within a second.
 
-- When you create the plan, enter **their** email address ("E-mailadres van je partner"). You can
-  change it later under Settings.
-- Send them the 6-character code: **Settings** (tap the two avatars, top right) → **Uitnodiging
-  delen**.
+The code is the key, so treat it like one. Two knobs in Settings if you need them:
 
-They open the same URL, log in with *that exact address*, tap *"Ik heb een code van mijn
-partner"*, and enter the code. Anything either of you ticks shows up on the other phone within a
-second.
+- **Nieuwe code maken** mints a fresh code and kills the old one on the spot. Whoever already
+  joined stays in.
+- **Vastzetten op één e-mailadres** is optional belt-and-braces: fill it in and the code only
+  works for that one account. Leave it empty and the code alone is enough.
 
 ---
 
@@ -172,10 +174,9 @@ Every task has **two** independent assignments, because they answer different qu
 - **Uitvoerder** (`tasks.party_id`) — an optional third party who actually carries out the work:
   the builder, the electrician, the kitchen showroom, the tool rental depot.
 
-You can own "Extra groepen laten trekken" while Van Dijk Elektro does it. Invoices carry the same
+You can own "Extra groepen laten trekken" while the electrician does it. Invoices carry the same
 link, so **Geld → Partijen** rolls every task and euro up per party: what they're doing, what's
-been paid, what's still open. The starter plan ships with nine parties already wired to the
-relevant tasks and invoices.
+been paid, what's still open. Parties are created as you go, from the task sheet.
 
 Deleting a party leaves its tasks alone — they just lose their executor.
 
@@ -196,35 +197,39 @@ rest of your data, and are read through short-lived signed URLs — nothing is p
   Empty house, no wifi, lift, basement — it keeps working, and catches up later.
 - **Last write wins.** Two people editing the same task at the same second is the only case
   where one edit is dropped. For a couple planning a move, that's the right trade.
-- **The plan slides.** The 32 starter tasks are stored as offsets from moving day, so changing
-  the moving date in Settings moves the whole plan with it. The nine starter parties come with
-  it, already linked.
-- **Jobs are reference data.** The 5 DIY jobs and their tool lists live in `seed.ts`, identical
+- **Nothing is invented for you.** A plan starts empty. Tasks arrive one of two ways: you type
+  them in, or the AI wizard writes them from the answers you gave it about your move. There is
+  no example plan and no placeholder content in the database.
+- **The AI wizard is opt-in and server-side.** It runs in the `generate-plan` Edge Function so
+  the API key never reaches the browser, and it is told not to invent company names or phone
+  numbers.
+- **Jobs are reference data.** The 5 DIY jobs and their tool lists live in `jobs.ts`, identical
   for everyone; only your ticks and reservations are per-household.
 
 ### Security
 
-**Login** is passwordless: you prove you control an inbox by reading a six-digit code out of it.
-There is no password to leak, reuse, or forget. Supabase expires the code after 10 minutes and
-rate-limits requests.
+**Login** is email + password against Supabase Auth. There is no self-signup: accounts exist only
+because you created them in the dashboard, so the login screen is a closed door rather than a
+front desk.
 
-**Joining a plan needs two independent things**, checked server-side in `join_household()`:
+**Joining a plan** goes through `join_household()`, a `security definer` function that is the only
+way into a household you aren't already in. It will only ever add the *calling* user, only into a
+free slot, and only on the right join code — six characters from a 29-symbol alphabet that leaves
+out vowels and lookalikes, so roughly 594 million combinations, over a rate-limited API. Knowing a
+household's uuid gets you nothing: direct inserts into `members` are only allowed into a household
+with no members yet, which is the moment a plan is created.
 
-1. a session for the exact email address the plan owner invited, and
-2. the 6-character plan code.
-
-Knowing the code without the inbox gets you nothing; having the inbox without the code gets you
-nothing. That's the "2FA" part — it's on the operation that actually matters, rather than on a
-login that guards nothing on its own.
+If you want the code narrowed to one person, fill in **Vastzetten op één e-mailadres** in Settings
+and the function additionally demands that the caller's verified address matches. And if a code
+does leak, **Nieuwe code maken** invalidates it immediately.
 
 **Everything else** is row-level security: you can only read or write a household you're a member
 of, membership can only ever be granted to the calling user, and two members per plan is enforced
-by a unique index. Creating a plan requires an email-verified token, so a stray anonymous session
-can't do it.
+by a unique index. Creating a plan requires a token with an email claim, so a stray anonymous
+session can't do it.
 
-Worth knowing: this trusts your email provider. Anyone who can read your inbox can log in — same
-as any "reset password by email" flow. If you want a second factor on the *login* itself, Supabase
-supports TOTP (authenticator app) and it would slot in beside this; say the word.
+Never put the *service_role* key anywhere in this repo or in a deployment env var that the client
+build can see — it bypasses RLS entirely.
 
 ---
 
@@ -242,4 +247,5 @@ Capacitor with the native shell around it — nothing here has to be thrown away
 ## Not built yet
 
 - Push notifications ("aannemer komt over een uur") — needs the native shell or web-push keys.
-- More than two people per plan (the database enforces two on purpose).
+- More than two people per plan (the database enforces two on purpose — `tasks.who` is
+  `a` / `b` / `samen`, so a third person has nowhere to sit).

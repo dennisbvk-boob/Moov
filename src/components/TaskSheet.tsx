@@ -4,7 +4,7 @@ import { Button, Eyebrow, Field, Segmented, Sheet, inputStyle } from './ui';
 import { useStore } from '../store';
 import { Attachments } from './Attachments';
 import { PartyRow } from './PartyPicker';
-import { JOBS } from '../seed';
+import { JOBS } from '../jobs';
 import type { DecoratedTask } from '../lib/derive';
 import type { Who } from '../types';
 

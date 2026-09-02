@@ -99,9 +99,9 @@ export function AuthGate({ onSkip, hasLocalPlan }: {
           color: C.muted,
         }}
       >
-        Je e-mailadres bepaalt bij welk plan je hoort. Om mee te doen met het plan van je partner
-        moet je inloggen met precies het adres dat zij of hij heeft uitgenodigd — de plancode
-        alleen is niet genoeg.
+        Log in met je eigen account — je ziet alleen de plannen waar je bij hoort. Meedoen met
+        het plan van iemand anders? Vraag om de plancode van zes tekens en vul die in na het
+        inloggen.
       </div>
 
       <button

@@ -17,7 +17,6 @@ import {
   normalizeEmail,
   type Session,
 } from './lib/supabase';
-import { buildSeedPlan } from './seed';
 import { todayISO } from './lib/dates';
 import { clearBlobs, deleteBlob, getBlob, putBlob } from './lib/blobs';
 import { MAX_BYTES, shrinkImage, storagePath } from './lib/images';
@@ -108,11 +107,11 @@ interface Store extends Persisted {
     moveDate: string;
     yourName: string;
     partnerName: string;
-    partnerEmail: string;
-    startEmpty?: boolean;
+    /** Optional: lock joining to this one address on top of the join code. */
+    partnerEmail?: string;
     /** Pre-generated household id — needed when tasks were built (e.g. by the AI wizard) before the household exists. */
     id?: string;
-    /** Use these tasks instead of the seed plan (or an empty plan). */
+    /** Tasks from the AI wizard. Without them the plan starts completely empty — nothing is ever pre-filled. */
     aiTasks?: Task[];
   }): Promise<void>;
   /** Delete every task and party in the current plan. The plan itself (address, date, names) stays. */
@@ -136,6 +135,12 @@ interface Store extends Persisted {
   updateHousehold(
     patch: Partial<Pick<Household, 'address' | 'move_date' | 'name_a' | 'name_b' | 'invited_email'>>,
   ): void;
+  /**
+   * Mint a fresh join code and store it. The old code stops working at once,
+   * which is the way back if a code ended up somewhere it shouldn't have.
+   * Resolves to the new code.
+   */
+  regenerateJoinCode(): Promise<string>;
   leave(): void;
   /** Permanently delete the current household and everyone/everything in it. Stays logged in. */
   deleteHousehold(): Promise<void>;
@@ -548,7 +553,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const createHousehold = useCallback<Store['createHousehold']>(
-    async ({ address, moveDate, yourName, partnerName, partnerEmail, startEmpty, id: presetId, aiTasks }) => {
+    async ({ address, moveDate, yourName, partnerName, partnerEmail, id: presetId, aiTasks }) => {
       const id = presetId ?? crypto.randomUUID();
       const household: Household = {
         id,
@@ -557,13 +562,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         join_code: makeJoinCode(),
         name_a: yourName,
         name_b: partnerName,
-        invited_email: partnerEmail ? normalizeEmail(partnerEmail) : null,
+        invited_email: partnerEmail?.trim() ? normalizeEmail(partnerEmail) : null,
       };
-      const { parties, tasks }: { parties: Party[]; tasks: Task[] } = aiTasks
-        ? { parties: [], tasks: aiTasks }
-        : startEmpty
-          ? { parties: [], tasks: [] }
-          : buildSeedPlan(id, moveDate);
+      // A plan is never pre-filled: it starts empty, or with exactly what the
+      // AI wizard produced from the answers the user gave.
+      const parties: Party[] = [];
+      const tasks: Task[] = aiTasks ?? [];
 
       if (supabase && session) {
         const { error } = await supabase.from('households').insert(household);
@@ -615,7 +619,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (error.message.includes('CODE_NOT_FOUND')) throw new Error('Die code kennen we niet.');
         if (error.message.includes('EMAIL_NOT_INVITED'))
           throw new Error(
-            `Dit plan is niet gedeeld met ${session.email}. Vraag je partner om precies dit adres uit te nodigen.`,
+            `Dit plan is vastgezet op één e-mailadres, en dat is niet ${session.email}. Vraag of ze het adres aanpassen of weghalen.`,
           );
         if (error.message.includes('HOUSEHOLD_FULL'))
           throw new Error('Dit plan heeft al twee mensen.');
@@ -905,6 +909,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [update],
   );
 
+  const regenerateJoinCode = useCallback<Store['regenerateJoinCode']>(async () => {
+    const cur = stateRef.current;
+    if (!cur.household) throw new Error('Geen plan om een code voor te maken.');
+    const join_code = makeJoinCode();
+    if (supabase) {
+      const { error } = await supabase
+        .from('households')
+        .update({ join_code })
+        .eq('id', cur.household.id);
+      if (error) throw new Error(error.message);
+    }
+    update((p) => (p.household ? { ...p, household: { ...p.household, join_code } } : p));
+    return join_code;
+  }, [update]);
+
   const updateHousehold = useCallback<Store['updateHousehold']>(
     (patch) => {
       const cur = stateRef.current;
@@ -983,6 +1002,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       togglePick,
       reserveJob,
       updateHousehold,
+      regenerateJoinCode,
       leave,
       deleteHousehold,
     };
@@ -1009,6 +1029,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     togglePick,
     reserveJob,
     updateHousehold,
+    regenerateJoinCode,
     leave,
     deleteHousehold,
   ]);

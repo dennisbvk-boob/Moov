@@ -16,8 +16,10 @@ create table if not exists households (
   created_at timestamptz not null default now()
 );
 
--- The one email address allowed to join this plan as the second person.
--- Joining needs this address *and* the join code — two independent secrets.
+-- Optional extra lock: when set, only this address may join, on top of the
+-- join code. Left null (the default) the join code alone is enough, which is
+-- how people normally share a plan — read the six characters out loud and the
+-- other person is in.
 alter table households add column if not exists invited_email text;
 
 create table if not exists members (
@@ -233,12 +235,16 @@ create policy bijlagen_delete on storage.objects for delete to authenticated
   );
 
 -- ─────────────────────────────────────────────────────────────
--- Joining a plan — two factors
+-- Joining a plan — with the join code
 -- ─────────────────────────────────────────────────────────────
 -- Runs as definer so a not-yet-member can look the household up by its code.
--- It can only ever add the *calling* user, into a free slot, and only when the
--- caller's verified email is the one the plan owner invited. Knowing the code
--- alone gets you nothing; controlling the inbox alone gets you nothing.
+-- It can only ever add the *calling* user, into a free slot, and only via the
+-- join code — a 6-character secret out of 29^6 (~594 million) that the plan
+-- owner shares deliberately and can regenerate at any time from Instellingen.
+-- The household uuid on its own still gets you nothing: this function is the
+-- only way in, since members_insert only lets you seed an empty household.
+--
+-- If the owner filled in `invited_email`, that address is required as well.
 
 create or replace function join_household(code text, display_name text)
 returns households
@@ -270,7 +276,8 @@ begin
     return h;
   end if;
 
-  if h.invited_email is null or lower(trim(h.invited_email)) <> caller_email then
+  -- only enforced when the owner opted into locking the plan to one address
+  if coalesce(trim(h.invited_email), '') <> '' and lower(trim(h.invited_email)) <> caller_email then
     raise exception 'EMAIL_NOT_INVITED';
   end if;
 
