@@ -50,7 +50,10 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
   };
 
   const share = async () => {
-    const text = `Doe mee met ons verhuisplan op Moov.nl. Open ${location.origin} en vul code ${h.join_code} in.`;
+    // BASE_URL, not just the origin: on GitHub Pages the app lives at
+    // <user>.github.io/Moov/ and a link to the bare origin lands nowhere.
+    const appUrl = location.origin + import.meta.env.BASE_URL;
+    const text = `Doe mee met ons verhuisplan op Moov.nl. Open ${appUrl} en vul code ${h.join_code} in.`;
     try {
       if (navigator.share) await navigator.share({ title: 'Moov.nl', text });
       else {
