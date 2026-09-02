@@ -19,7 +19,6 @@ export function AddTaskSheet({ open, onClose }: { open: boolean; onClose: () => 
   const [time, setTime] = useState('');
   const [note, setNote] = useState('');
   const [amount, setAmount] = useState('');
-  const [vendor, setVendor] = useState('');
 
   if (!open) return null;
 
@@ -32,7 +31,6 @@ export function AddTaskSheet({ open, onClose }: { open: boolean; onClose: () => 
     setTime('');
     setNote('');
     setAmount('');
-    setVendor('');
   };
 
   const submit = () => {
@@ -47,7 +45,8 @@ export function AddTaskSheet({ open, onClose }: { open: boolean; onClose: () => 
       time: time || null,
       note: note || null,
       amount: cat === 'betaling' && Number.isFinite(parsed as number) ? parsed : null,
-      vendor: cat === 'betaling' ? vendor : null,
+      // Who gets paid is the party, not a second free-text name beside it.
+      vendor: null,
     });
     reset();
     onClose();
@@ -109,7 +108,7 @@ export function AddTaskSheet({ open, onClose }: { open: boolean; onClose: () => 
           />
         </Field>
 
-        <PartyRow partyId={partyId} onPick={setPartyId} />
+        <PartyRow partyId={partyId} onPick={setPartyId} payment={cat === 'betaling'} />
 
         <div style={{ display: 'flex', gap: 10 }}>
           <div style={{ flex: 1 }}>
@@ -125,29 +124,15 @@ export function AddTaskSheet({ open, onClose }: { open: boolean; onClose: () => 
         </div>
 
         {cat === 'betaling' && (
-          <div style={{ display: 'flex', gap: 10 }}>
-            <div style={{ flex: 1 }}>
-              <Field label="AAN WIE">
-                <input
-                  value={vendor}
-                  onChange={(e) => setVendor(e.target.value)}
-                  placeholder="Bijv. Bouwbedrijf Bakker"
-                  style={inputStyle}
-                />
-              </Field>
-            </div>
-            <div style={{ width: 118 }}>
-              <Field label="BEDRAG (€)">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  style={inputStyle}
-                />
-              </Field>
-            </div>
-          </div>
+          <Field label="BEDRAG (€)">
+            <input
+              type="number"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              style={inputStyle}
+            />
+          </Field>
         )}
 
         <Field label="NOTITIE">

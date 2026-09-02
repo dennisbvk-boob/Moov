@@ -5,10 +5,17 @@ import { useStore } from '../store';
 import { KINDS, PartyDot } from './PartyBits';
 import type { PartyKind } from '../types';
 
-/** The row you tap on a task to choose who carries it out. */
-export function PartyRow({ partyId, onPick }: {
+/**
+ * The row you tap on a task to choose the third party involved. On a payment
+ * that party is the payee rather than the executor, so the wording shifts —
+ * but it is deliberately the same object and the same list, so the builder you
+ * booked for a job is the builder you pay.
+ */
+export function PartyRow({ partyId, onPick, payment }: {
   partyId: string | null;
   onPick: (id: string | null) => void;
+  /** Word it as "who gets the money" instead of "who does the work". */
+  payment?: boolean;
 }) {
   const store = useStore();
   const [open, setOpen] = useState(false);
@@ -16,7 +23,7 @@ export function PartyRow({ partyId, onPick }: {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <Eyebrow>UITVOERDER</Eyebrow>
+      <Eyebrow>{payment ? 'AAN WIE' : 'UITVOERDER'}</Eyebrow>
       <button
         onClick={() => setOpen(true)}
         style={{
@@ -42,10 +49,14 @@ export function PartyRow({ partyId, onPick }: {
               whiteSpace: 'nowrap',
             }}
           >
-            {party ? party.name : 'Zelf doen'}
+            {party ? party.name : payment ? 'Nog niemand gekozen' : 'Zelf doen'}
           </div>
           <div style={{ font: `400 11.5px ${SANS}`, color: C.faint }}>
-            {party ? KINDS[party.kind].label : 'Geen derde partij aan deze taak gekoppeld'}
+            {party
+              ? KINDS[party.kind].label
+              : payment
+                ? 'Kies of maak de partij die je betaalt'
+                : 'Geen derde partij aan deze taak gekoppeld'}
           </div>
         </div>
         <div style={{ font: `400 18px ${SANS}`, color: '#C4BCAF' }}>›</div>
@@ -54,6 +65,7 @@ export function PartyRow({ partyId, onPick }: {
       {open && (
         <PartyPickerSheet
           current={partyId}
+          payment={payment}
           onClose={() => setOpen(false)}
           onPick={(id) => {
             onPick(id);
@@ -65,10 +77,11 @@ export function PartyRow({ partyId, onPick }: {
   );
 }
 
-function PartyPickerSheet({ current, onPick, onClose }: {
+function PartyPickerSheet({ current, onPick, onClose, payment }: {
   current: string | null;
   onPick: (id: string | null) => void;
   onClose: () => void;
+  payment?: boolean;
 }) {
   const store = useStore();
   const [q, setQ] = useState('');
@@ -94,7 +107,7 @@ function PartyPickerSheet({ current, onPick, onClose }: {
         style={{ overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 12 }}
       >
         <div style={{ font: `700 21px/1.2 ${SANS}`, letterSpacing: '-.025em' }}>
-          Wie voert dit uit?
+          {payment ? 'Aan wie betaal je?' : 'Wie voert dit uit?'}
         </div>
 
         {adding ? (
@@ -149,7 +162,7 @@ function PartyPickerSheet({ current, onPick, onClose }: {
               }}
             >
               <Row
-                label="Zelf doen"
+                label={payment ? 'Nog niemand' : 'Zelf doen'}
                 sub="Geen derde partij"
                 dot={<PartyDot kind={null} />}
                 selected={current === null}
