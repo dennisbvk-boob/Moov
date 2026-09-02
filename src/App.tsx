@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { C, MONO, SANS } from './theme';
 import { useStore } from './store';
 import { usePlan } from './lib/plan';
+import { person } from './lib/derive';
 import { syncEnabled } from './lib/supabase';
 import { Avatar } from './components/ui';
 import { TabBar } from './components/TabBar';
@@ -112,8 +113,8 @@ function Plan() {
     setOpenJob(id);
   };
 
-  const initA = h.name_a[0]?.toUpperCase() ?? '?';
-  const initB = h.name_b[0]?.toUpperCase() ?? '?';
+  const initA = person('a', h).initial;
+  const initB = person('b', h).initial;
 
   return (
     <>

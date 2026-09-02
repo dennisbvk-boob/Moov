@@ -60,7 +60,7 @@ export function AuthGate({ onSkip, hasLocalPlan }: {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !busy && void submit()}
-            placeholder="jij@voorbeeld.nl"
+            placeholder="naam@voorbeeld.nl"
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}

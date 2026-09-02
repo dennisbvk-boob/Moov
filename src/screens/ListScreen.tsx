@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { C, CATS, MONO, SANS, SHADOW } from '../theme';
 import { Avatar, Check, Segmented } from '../components/ui';
 import { ClipBadge } from '../components/ClipBadge';
+import { nameFor } from '../lib/derive';
 import { useStore } from '../store';
 import type { Plan } from '../lib/plan';
 import type { Who } from '../types';
@@ -35,8 +36,8 @@ export function ListScreen({ plan, onOpenTask }: { plan: Plan; onOpenTask: (id: 
         onChange={setFilter}
         options={[
           { value: 'alles', label: 'Alles' },
-          { value: 'a', label: h.name_a },
-          { value: 'b', label: h.name_b },
+          { value: 'a', label: nameFor('a', h) },
+          { value: 'b', label: nameFor('b', h) },
           { value: 'samen', label: 'Samen' },
         ]}
       />

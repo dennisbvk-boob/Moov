@@ -18,6 +18,7 @@ import {
   type Session,
 } from './lib/supabase';
 import { todayISO } from './lib/dates';
+import { nameFor } from './lib/derive';
 import { clearBlobs, deleteBlob, getBlob, putBlob } from './lib/blobs';
 import { MAX_BYTES, shrinkImage, storagePath } from './lib/images';
 import type { ActivityEntry, Attachment, Household, Party, PartyKind, Task, Who } from './types';
@@ -443,7 +444,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       household_id: h.id,
       user_id: sess.userId,
       slot: cur.slot,
-      display_name: cur.slot === 'a' ? h.name_a : h.name_b,
+      display_name: nameFor(cur.slot, h),
       email: sess.email,
     });
     if (cur.parties.length) await supabase.from('parties').upsert(cur.parties);
@@ -530,7 +531,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     (text: string, target?: { forSlot: 'a' | 'b' | null; taskId?: string | null }) => {
       const cur = stateRef.current;
       if (!cur.household) return;
-      const actor = cur.slot === 'a' ? cur.household.name_a : cur.household.name_b;
+      const actor = nameFor(cur.slot, cur.household);
       const entry: ActivityEntry = {
         id: crypto.randomUUID(),
         household_id: cur.household.id,
@@ -575,7 +576,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const describeAssignment = useCallback((verb: 'add' | 'give', title: string, who: Who): string => {
     const h = stateRef.current.household;
     if (who === 'samen') return `zette “${title}” op jullie gezamenlijke lijst`;
-    const name = (who === 'a' ? h?.name_a : h?.name_b) || 'de ander';
+    const name = nameFor(who, h);
     return verb === 'add'
       ? `zette “${title}” op de lijst van ${name}`
       : `gaf “${title}” aan ${name}`;
@@ -692,11 +693,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const cur = stateRef.current;
       const t = cur.tasks.find((x) => x.id === id);
       if (!t) return;
-      const me = cur.household
-        ? cur.slot === 'a'
-          ? cur.household.name_a
-          : cur.household.name_b
-        : 'Jij';
+      const me = nameFor(cur.slot, cur.household);
       touchTask(id, { done: !t.done, done_by: !t.done ? me : null });
       if (!t.done) logActivity(`vinkte “${t.title}” af`);
     },
@@ -791,7 +788,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           mime: blob.type || file.type || null,
           size: blob.size,
           path: null,
-          uploaded_by: cur.slot === 'a' ? cur.household.name_a : cur.household.name_b,
+          uploaded_by: nameFor(cur.slot, cur.household),
           created_at: new Date().toISOString(),
         });
       }
@@ -963,7 +960,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     (jobId) => {
       const cur = stateRef.current;
       if (!cur.household) return;
-      const me = cur.slot === 'a' ? cur.household.name_a : cur.household.name_b;
+      const me = nameFor(cur.slot, cur.household);
       update((p) => ({ ...p, reserved: { ...p.reserved, [jobId]: me } }));
       if (supabase) {
         void supabase
@@ -1040,12 +1037,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [session]);
 
   const value = useMemo<Store>(() => {
-    const meName = s.household ? (s.slot === 'a' ? s.household.name_a : s.household.name_b) : 'Jij';
-    const partnerName = s.household
-      ? s.slot === 'a'
-        ? s.household.name_b
-        : s.household.name_a
-      : 'Partner';
+    const meName = nameFor(s.slot, s.household);
+    const partnerName = nameFor(s.slot === 'a' ? 'b' : 'a', s.household);
     // Addressed to me, and newer than the last time I opened the list. The
     // activity feed itself is capped at 20 rows, so this is bounded with it.
     const notifications = s.activity

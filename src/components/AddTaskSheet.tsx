@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CATS, SANS } from '../theme';
 import { Button, Field, Segmented, Sheet, inputStyle } from './ui';
+import { nameFor } from '../lib/derive';
 import { useStore, useToday } from '../store';
 import { PartyRow } from './PartyPicker';
 import type { CatKey } from '../theme';
@@ -101,8 +102,8 @@ export function AddTaskSheet({ open, onClose }: { open: boolean; onClose: () => 
             value={who}
             onChange={setWho}
             options={[
-              { value: 'a', label: h.name_a },
-              { value: 'b', label: h.name_b },
+              { value: 'a', label: nameFor('a', h) },
+              { value: 'b', label: nameFor('b', h) },
               { value: 'samen', label: 'Samen' },
             ]}
           />
