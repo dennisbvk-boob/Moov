@@ -40,7 +40,13 @@ export interface DecoratedTask extends Task {
   cardBorder: string;
 }
 
-export function decorate(t: Task, today: string, h: Household | null): DecoratedTask {
+export function decorate(
+  t: Task,
+  today: string,
+  h: Household | null,
+  /** Name of the linked party, when there is one — it wins over the free-text vendor. */
+  partyName: string | null = null,
+): DecoratedTask {
   const c = CATS[t.cat];
   const w = person(t.who, h);
   const late = !t.done && daysBetween(today, t.date) < 0;
@@ -48,7 +54,7 @@ export function decorate(t: Task, today: string, h: Household | null): Decorated
 
   return {
     ...t,
-    partyName: null,
+    partyName,
     cat_label: c.label,
     color: c.color,
     soft: c.soft,
@@ -63,7 +69,7 @@ export function decorate(t: Task, today: string, h: Household | null): Decorated
     metaLine: (t.time ? t.time + ' · ' : '') + w.label,
     listMeta: fmtShort(t.date) + (t.time ? ' · ' + t.time : '') + ' · ' + w.label,
     amountLabel: t.amount ? money(t.amount) : '',
-    vendorLabel: t.vendor || t.title,
+    vendorLabel: partyName || t.vendor || t.title,
     dueColor: late ? C.clay : C.faint,
     dueLine: t.done
       ? 'Betaald op ' + fmtShort(t.date)

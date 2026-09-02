@@ -109,7 +109,7 @@ function InvoiceList({ plan, onOpenTask }: { plan: Plan; onOpenTask: (id: string
                   color: t.titleColor,
                 }}
               >
-                {(t.party_id && plan.partyById.get(t.party_id)?.name) || t.vendorLabel}
+                {t.vendorLabel}
               </div>
               <div style={{ font: `400 11.5px ${SANS}`, color: t.dueColor }}>{t.dueLine}</div>
             </div>
@@ -215,7 +215,7 @@ function PartiesList({ plan, onOpen }: { plan: Plan; onOpen: (id: string) => voi
           }}
         >
           {money(plan.unassignedSpend)} aan facturen hangt nog aan geen enkele partij. Open zo'n
-          factuur en kies er een uitvoerder bij.
+          factuur en kies bij "Aan wie" wie het geld krijgt.
         </div>
       )}
 
@@ -245,7 +245,7 @@ function PartiesList({ plan, onOpen }: { plan: Plan; onOpen: (id: string) => voi
 
       {!plan.partyRollups.length && (
         <div style={{ font: `400 13.5px/1.45 ${SANS}`, color: C.muted, padding: '8px 2px' }}>
-          Nog geen partijen. Open een taak en kies bij “Uitvoerder” wie hem uitvoert.
+          Nog geen partijen. Open een taak of factuur en kies wie hem uitvoert of betaald krijgt.
         </div>
       )}
     </>

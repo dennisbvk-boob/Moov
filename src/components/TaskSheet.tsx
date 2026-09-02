@@ -149,6 +149,7 @@ export function TaskSheet({ task, onClose, onOpenJob }: {
         <PartyRow
           partyId={task.party_id}
           onPick={(id) => store.patchTask(task.id, { party_id: id })}
+          payment={task.cat === 'betaling'}
         />
 
         <Attachments taskId={task.id} />

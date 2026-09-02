@@ -38,11 +38,7 @@ export function usePlan() {
 
     const partyNames = new Map(store.parties.map((p) => [p.id, p.name]));
     const all = store.tasks
-      .map((t) => {
-        const d = decorate(t, today, h);
-        d.partyName = t.party_id ? (partyNames.get(t.party_id) ?? null) : null;
-        return d;
-      })
+      .map((t) => decorate(t, today, h, t.party_id ? (partyNames.get(t.party_id) ?? null) : null))
       .sort(byWhen);
     const tasks = all.filter((t) => t.cat !== 'betaling');
     const invoices = all.filter((t) => t.cat === 'betaling');
