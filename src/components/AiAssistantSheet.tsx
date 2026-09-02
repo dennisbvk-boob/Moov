@@ -76,7 +76,10 @@ export function AiAssistantSheet({ open, onClose }: { open: boolean; onClose: ()
     }
     for (const u of edits.updates) {
       if (!included.has(`update:${u.id}`)) continue;
-      store.patchTask(u.id, u.patch);
+      const { who, ...rest } = u.patch;
+      if (Object.keys(rest).length) store.patchTask(u.id, rest);
+      // handing a task over is news for the other person, however it was asked for
+      if (who) store.reassignTask(u.id, who);
     }
     for (const id of edits.completeIds) {
       if (!included.has(`complete:${id}`)) continue;

@@ -10,6 +10,7 @@ import { JobSheet } from './components/JobSheet';
 import { AddTaskSheet } from './components/AddTaskSheet';
 import { SettingsSheet } from './components/SettingsSheet';
 import { AiAssistantSheet } from './components/AiAssistantSheet';
+import { NotificationsSheet } from './components/NotificationsSheet';
 import { AuthGate } from './screens/AuthGate';
 import { Onboarding } from './screens/Onboarding';
 import { Today } from './screens/Today';
@@ -96,6 +97,7 @@ function Plan() {
   const [adding, setAdding] = useState(false);
   const [settings, setSettings] = useState(false);
   const [assistant, setAssistant] = useState(false);
+  const [inbox, setInbox] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
   // Jump back to the top when switching tabs — otherwise you land mid-list.
@@ -148,6 +150,7 @@ function Plan() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
+          <Bell count={store.notifications.length} onClick={() => setInbox(true)} />
           {store.session && (
             <button
               onClick={() => setAssistant(true)}
@@ -220,7 +223,68 @@ function Plan() {
       <AddTaskSheet open={adding} onClose={() => setAdding(false)} />
       <SettingsSheet open={settings} onClose={() => setSettings(false)} />
       <AiAssistantSheet open={assistant} onClose={() => setAssistant(false)} />
+      <NotificationsSheet open={inbox} onClose={() => setInbox(false)} onOpenTask={setOpenTask} />
     </>
+  );
+}
+
+/**
+ * The in-app inbox. Always present rather than only when unread, so "did they
+ * send me anything?" has one answer in one place instead of a badge that
+ * vanishes and takes the history with it.
+ */
+function Bell({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={count ? `${count} nieuwe meldingen` : 'Meldingen'}
+      style={{
+        position: 'relative',
+        width: 32,
+        height: 32,
+        borderRadius: '50%',
+        background: count ? C.claySoft : C.sand,
+        color: count ? C.clay : C.muted,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        font: `500 15px ${SANS}`,
+        lineHeight: 1,
+      }}
+    >
+      <svg aria-hidden width="15" height="15" viewBox="0 0 16 16" fill="none">
+        <path
+          d="M8 1.6a3.9 3.9 0 0 0-3.9 3.9c0 3-1.1 4-1.5 4.4a.5.5 0 0 0 .35.85h10.1a.5.5 0 0 0 .35-.85c-.4-.4-1.5-1.4-1.5-4.4A3.9 3.9 0 0 0 8 1.6Z"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        <path d="M6.4 13a1.7 1.7 0 0 0 3.2 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+      {count > 0 && (
+        <span
+          style={{
+            position: 'absolute',
+            top: -2,
+            right: -2,
+            minWidth: 16,
+            height: 16,
+            padding: '0 4px',
+            borderRadius: 99,
+            background: C.clay,
+            color: '#fff',
+            font: `700 10px ${SANS}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: `2px solid ${C.card}`,
+            boxSizing: 'content-box',
+          }}
+        >
+          {count > 9 ? '9+' : count}
+        </span>
+      )}
+    </button>
   );
 }
 
