@@ -1,7 +1,7 @@
 import { C, MODES, MONO, SANS, SHADOW } from '../theme';
 import { Button, Check, Eyebrow, Sheet } from './ui';
 import { money, priceNum } from '../lib/dates';
-import { JOBS } from '../seed';
+import { JOBS } from '../jobs';
 import { useStore } from '../store';
 
 export function JobSheet({ jobId, onClose }: { jobId: string | null; onClose: () => void }) {

@@ -8,6 +8,7 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
   const store = useStore();
   const h = store.household;
   const [copied, setCopied] = useState(false);
+  const [rotating, setRotating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   if (!open || !h) return null;
@@ -28,6 +29,23 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
       setDeleteError(e instanceof Error ? e.message : 'Verwijderen lukte niet.');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const rotateCode = async () => {
+    if (
+      !confirm(
+        'Een nieuwe code maken? De huidige code werkt daarna niet meer — wie al meedoet blijft gewoon meedoen.',
+      )
+    )
+      return;
+    setRotating(true);
+    try {
+      await store.regenerateJoinCode();
+    } catch {
+      /* offline of geen rechten — de oude code blijft dan gewoon staan */
+    } finally {
+      setRotating(false);
     }
   };
 
@@ -79,12 +97,20 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
                 {h.join_code}
               </div>
               <div style={{ font: `400 12px/1.5 ${SANS}`, color: C.muted, textAlign: 'center' }}>
-                Je partner logt in met het adres hieronder en vult daarna deze code in. Allebei
-                nodig — de code alleen geeft geen toegang.
+                {h.invited_email
+                  ? `Deze code plus inloggen als ${h.invited_email} geeft toegang tot dit plan.`
+                  : 'Wie inlogt en deze code invult, doet mee met dit plan. Deel hem dus alleen met de mensen die erbij horen.'}
               </div>
               <Button onClick={share}>{copied ? 'Gekopieerd ✓' : 'Uitnodiging delen'}</Button>
+              <button
+                onClick={() => void rotateCode()}
+                disabled={rotating}
+                style={{ font: `500 12px ${SANS}`, color: C.ghost }}
+              >
+                {rotating ? 'Bezig…' : 'Nieuwe code maken'}
+              </button>
             </div>
-            <Field label="UITGENODIGD E-MAILADRES">
+            <Field label="VASTZETTEN OP ÉÉN E-MAILADRES (OPTIONEEL)">
               <input
                 type="email"
                 defaultValue={h.invited_email ?? ''}
@@ -102,11 +128,11 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
                 style={inputStyle}
               />
             </Field>
-            {!h.invited_email && (
-              <div style={{ font: `400 11.5px/1.45 ${SANS}`, color: C.clay }}>
-                Zonder adres kan niemand meedoen. Vul in met welk e-mailadres je partner inlogt.
-              </div>
-            )}
+            <div style={{ font: `400 11.5px/1.45 ${SANS}`, color: C.muted }}>
+              {h.invited_email
+                ? 'Alleen dit adres kan meedoen, ook met de juiste code. Leeghalen om iedereen met de code toe te laten.'
+                : 'Leeg: de code alleen is genoeg. Vul een adres in als je wilt dat alleen dat account kan meedoen.'}
+            </div>
           </div>
         )}
 

@@ -6,7 +6,7 @@ import { looksLikeEmail, syncEnabled } from '../lib/supabase';
 import { addDays } from '../lib/dates';
 import { generateAiPlan, type WizardAnswers } from '../lib/wizard';
 
-type PlanType = 'seed' | 'empty' | 'ai';
+type PlanType = 'empty' | 'ai';
 
 export function Onboarding() {
   const store = useStore();
@@ -20,7 +20,7 @@ export function Onboarding() {
   const [yourName, setYourName] = useState('');
   const [partnerName, setPartnerName] = useState('');
   const [partnerEmail, setPartnerEmail] = useState('');
-  const [planType, setPlanType] = useState<PlanType>('seed');
+  const [planType, setPlanType] = useState<PlanType>('empty');
   const [code, setCode] = useState('');
 
   const [homeType, setHomeType] = useState('tussenwoning');
@@ -32,7 +32,9 @@ export function Onboarding() {
   const [notes, setNotes] = useState('');
 
   const signedIn = !!store.session;
-  const partnerEmailOk = !signedIn || looksLikeEmail(partnerEmail);
+  // Blank is fine — the join code alone lets your partner in. Filling it in is
+  // an extra lock, so it only has to be a real address when it isn't empty.
+  const partnerEmailOk = !partnerEmail.trim() || looksLikeEmail(partnerEmail);
   const newPlanReady =
     !!address.trim() && !!yourName.trim() && !!partnerName.trim() && partnerEmailOk;
 
@@ -125,7 +127,7 @@ export function Onboarding() {
           </div>
 
           {signedIn && (
-            <Field label="E-MAILADRES VAN JE PARTNER">
+            <Field label="E-MAILADRES VAN JE PARTNER (OPTIONEEL)">
               <input
                 type="email"
                 value={partnerEmail}
@@ -151,19 +153,16 @@ export function Onboarding() {
             }}
           >
             {signedIn
-              ? 'Alleen dit adres kan straks meedoen — mét de plancode die je erna te zien krijgt. Je kunt het later nog wijzigen. '
+              ? 'Iedereen met de plancode die je erna te zien krijgt kan meedoen. Vul je hierboven een e-mailadres in, dan kan alleen dat adres meedoen. Later nog te wijzigen. '
               : ''}
             {planType === 'empty' &&
               'Je begint met een leeg plan — geen voorbeeldtaken, alleen wat jullie zelf toevoegen.'}
-            {planType === 'seed' &&
-              'Je begint met een compleet voorbeeldplan van 32 taken rond die verhuisdag — schuif, verwijder en vul aan tot het jullie plan is.'}
             {planType === 'ai' &&
               'Beantwoord een paar vragen hieronder en de AI stelt een plan op maat samen.'}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <Radio label="Voorbeeldplan (32 taken)" checked={planType === 'seed'} onClick={() => setPlanType('seed')} />
-            <Radio label="Begin leeg" checked={planType === 'empty'} onClick={() => setPlanType('empty')} />
+            <Radio label="Begin leeg — zelf taken toevoegen" checked={planType === 'empty'} onClick={() => setPlanType('empty')} />
             <Radio
               label="Laat de AI het plan invullen"
               checked={planType === 'ai'}
@@ -266,7 +265,6 @@ export function Onboarding() {
                     yourName: yourName.trim(),
                     partnerName: partnerName.trim(),
                     partnerEmail: partnerEmail.trim(),
-                    startEmpty: planType === 'empty',
                   });
                 }
               })
@@ -297,7 +295,8 @@ export function Onboarding() {
               }}
             >
               Je bent ingelogd als <strong style={{ color: C.ink }}>{store.session!.email}</strong>.
-              Het plan moet met precies dit adres gedeeld zijn.
+              De code hieronder is genoeg — tenzij het plan aan één specifiek adres is
+              vastgezet, dan moet dat dit adres zijn.
             </div>
           )}
           <Field label="CODE">

@@ -59,7 +59,10 @@ export interface Household {
   join_code: string;
   name_a: string;
   name_b: string;
-  /** The only address allowed to join this plan as the second person. */
+  /**
+   * Optional extra lock. Null (the default) means the join code alone lets the
+   * second person in; set to an address and only that account may join.
+   */
   invited_email: string | null;
 }
 

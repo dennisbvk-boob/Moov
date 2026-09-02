@@ -87,6 +87,12 @@ export function Timeline({ plan, onOpenTask }: { plan: Plan; onOpenTask: (id: st
           </div>
         </div>
       ))}
+
+      {!phases.length && (
+        <div style={{ font: `400 13.5px/1.45 ${SANS}`, color: C.muted, padding: '2px' }}>
+          Nog geen taken. Voeg er een toe met de + rechtsboven, dan verschijnt de tijdlijn hier.
+        </div>
+      )}
     </div>
   );
 }

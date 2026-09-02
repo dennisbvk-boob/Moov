@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useStore, useToday } from '../store';
-import { JOBS } from '../seed';
+import { JOBS } from '../jobs';
 import { byWhen, decorate, type DecoratedTask } from './derive';
 import { addDays, daysBetween, fmtRange, priceNum } from './dates';
 import type { Party } from '../types';
