@@ -137,7 +137,7 @@ export function TaskSheet({ task, onClose, onOpenJob }: {
           <Eyebrow>WIE DOET DIT</Eyebrow>
           <Segmented<Who>
             value={task.who}
-            onChange={(w) => store.patchTask(task.id, { who: w })}
+            onChange={(w) => store.reassignTask(task.id, w)}
             options={[
               { value: 'a', label: h.name_a },
               { value: 'b', label: h.name_b },

@@ -113,6 +113,16 @@ create table if not exists activity (
 );
 create index if not exists activity_household_idx on activity (household_id, created_at desc);
 
+-- An entry addressed to one of the two of you: "Dennis gave you this task".
+-- Null (the default) is a plain feed entry that notifies nobody. Both people
+-- still read every row — this says who it is *for*, not who may see it, which
+-- is what lets the same table power the feed and the in-app notifications.
+alter table activity add column if not exists for_slot text
+  check (for_slot in ('a', 'b'));
+-- so tapping a notification can open the task it is about
+alter table activity add column if not exists task_id uuid
+  references tasks(id) on delete cascade;
+
 -- ─────────────────────────────────────────────────────────────
 -- Row level security
 -- ─────────────────────────────────────────────────────────────

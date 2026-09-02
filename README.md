@@ -180,6 +180,20 @@ been paid, what's still open. Parties are created as you go, from the task sheet
 
 Deleting a party leaves its tasks alone — they just lose their executor.
 
+### Notifications stay inside the app
+
+Put a task on your partner's plate — creating it for them, handing an existing one over, or
+marking it *samen* — and a badge appears on the bell in their header. Tapping it opens the task.
+A task you give **yourself** notifies nobody.
+
+There is no email and no push: a notification is an `activity` row carrying a `for_slot`, synced
+over the same realtime channel as everything else, so it lands on the other phone within a second
+of them having the app open. Nothing leaves the app, and nothing reaches them when it's closed —
+that would need web-push keys or the native shell (see [Not built yet](#not-built-yet)).
+
+"Read" is tracked per device, like a phone's own notification tray: clearing the badge on your
+phone doesn't clear it on your tablet.
+
 ### Attachments
 
 Photos and PDFs hang off a task (**Bijlagen** in the task sheet): a shot of the meter cupboard,
@@ -205,6 +219,9 @@ rest of your data, and are read through short-lived signed URLs — nothing is p
   numbers.
 - **Jobs are reference data.** The 5 DIY jobs and their tool lists live in `jobs.ts`, identical
   for everyone; only your ticks and reservations are per-household.
+- **One party, both purposes.** The contractor you book for a job is the contractor you pay.
+  Payments pick from the same list as everything else, so every invoice rolls up under a real
+  party in **Geld → Partijen** instead of a name typed twice.
 
 ### Security
 
@@ -246,6 +263,7 @@ Capacitor with the native shell around it — nothing here has to be thrown away
 
 ## Not built yet
 
-- Push notifications ("aannemer komt over een uur") — needs the native shell or web-push keys.
+- Push notifications that reach a **closed** app ("aannemer komt over een uur") — needs web-push
+  keys or the native shell. In-app notifications for task assignments do work; see above.
 - More than two people per plan (the database enforces two on purpose — `tasks.who` is
   `a` / `b` / `samen`, so a third person has nowhere to sit).

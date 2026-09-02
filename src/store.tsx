@@ -43,6 +43,12 @@ interface Persisted {
   deletedParties: string[];
   /** Attachment ids whose bytes are still only in this device's IndexedDB. */
   pendingUploads: string[];
+  /**
+   * When this device last opened the notification list. Anything addressed to
+   * you after this counts as unread. Deliberately per-device, like a phone's
+   * own notification tray — reading it here doesn't clear it on your tablet.
+   */
+  readActivityAt: string;
 }
 
 const EMPTY: Persisted = {
@@ -60,6 +66,7 @@ const EMPTY: Persisted = {
   deletedTasks: [],
   deletedParties: [],
   pendingUploads: [],
+  readActivityAt: new Date(0).toISOString(),
 };
 
 function load(): Persisted {
@@ -144,6 +151,12 @@ interface Store extends Persisted {
   leave(): void;
   /** Permanently delete the current household and everyone/everything in it. Stays logged in. */
   deleteHousehold(): Promise<void>;
+  /** Change who owns a task, telling them about it if it isn't you. */
+  reassignTask(id: string, who: Who): void;
+  /** Entries addressed to you that you haven't opened yet, newest first. */
+  notifications: ActivityEntry[];
+  /** Mark everything currently addressed to you as seen. */
+  markNotificationsRead(): void;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -514,7 +527,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // ── actions ───────────────────────────────────────────────
 
   const logActivity = useCallback(
-    (text: string) => {
+    (text: string, target?: { forSlot: 'a' | 'b' | null; taskId?: string | null }) => {
       const cur = stateRef.current;
       if (!cur.household) return;
       const actor = cur.slot === 'a' ? cur.household.name_a : cur.household.name_b;
@@ -524,6 +537,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         actor,
         text,
         created_at: new Date().toISOString(),
+        for_slot: target?.forSlot ?? null,
+        task_id: target?.taskId ?? null,
       };
       update((p) => ({ ...p, activity: [entry, ...p.activity].slice(0, 20) }));
       if (supabase) {
@@ -532,11 +547,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           household_id: entry.household_id,
           actor,
           text,
+          for_slot: entry.for_slot,
+          task_id: entry.task_id,
         });
       }
     },
     [update],
   );
+
+  /**
+   * Who a task lands on, other than the person doing the assigning. A task you
+   * give yourself is not news; one for your partner — or for the two of you
+   * together — is. Returns null when there is nobody to tell.
+   */
+  const notifySlotFor = useCallback((who: Who): 'a' | 'b' | null => {
+    const mine = stateRef.current.slot;
+    const other: 'a' | 'b' = mine === 'a' ? 'b' : 'a';
+    if (who === 'samen') return other;
+    return who === mine ? null : who;
+  }, []);
+
+  /**
+   * Activity text is written in the third person — the same row is read in the
+   * feed by the person who wrote it and in the inbox by the person it is for,
+   * and "jouw lijst" is wrong for one of them whichever way round you put it.
+   */
+  const describeAssignment = useCallback((verb: 'add' | 'give', title: string, who: Who): string => {
+    const h = stateRef.current.household;
+    if (who === 'samen') return `zette “${title}” op jullie gezamenlijke lijst`;
+    const name = (who === 'a' ? h?.name_a : h?.name_b) || 'de ander';
+    return verb === 'add'
+      ? `zette “${title}” op de lijst van ${name}`
+      : `gaf “${title}” aan ${name}`;
+  }, []);
 
   const touchTask = useCallback(
     (id: string, patch: Partial<Task>) => {
@@ -682,10 +725,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         updated_at: new Date().toISOString(),
       };
       update((p) => ({ ...p, tasks: [...p.tasks, task], dirtyTasks: [...p.dirtyTasks, task.id] }));
-      logActivity(`zette “${task.title}” op de lijst`);
+      const forSlot = notifySlotFor(task.who);
+      logActivity(
+        forSlot ? describeAssignment('add', task.title, task.who) : `zette “${task.title}” op de lijst`,
+        { forSlot, taskId: task.id },
+      );
       nudge();
     },
-    [update, nudge, logActivity],
+    [update, nudge, logActivity, notifySlotFor, describeAssignment],
+  );
+
+  /**
+   * Handing an existing task to the other person is the same news as creating
+   * one for them, so it notifies the same way. Every other edit stays quiet.
+   */
+  const reassignTask = useCallback(
+    (id: string, who: Who) => {
+      const cur = stateRef.current;
+      const t = cur.tasks.find((x) => x.id === id);
+      if (!t || t.who === who) return;
+      touchTask(id, { who });
+      const forSlot = notifySlotFor(who);
+      if (forSlot) {
+        logActivity(describeAssignment('give', t.title, who), { forSlot, taskId: id });
+      }
+    },
+    [touchTask, logActivity, notifySlotFor, describeAssignment],
   );
 
   /**
@@ -924,6 +989,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return join_code;
   }, [update]);
 
+  const markNotificationsRead = useCallback(() => {
+    update((p) => ({ ...p, readActivityAt: new Date().toISOString() }));
+  }, [update]);
+
   const updateHousehold = useCallback<Store['updateHousehold']>(
     (patch) => {
       const cur = stateRef.current;
@@ -977,6 +1046,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ? s.household.name_b
         : s.household.name_a
       : 'Partner';
+    // Addressed to me, and newer than the last time I opened the list. The
+    // activity feed itself is capped at 20 rows, so this is bounded with it.
+    const notifications = s.activity
+      .filter((e) => e.for_slot === s.slot && e.created_at > s.readActivityAt)
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
     return {
       ...s,
       status,
@@ -1003,6 +1077,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reserveJob,
       updateHousehold,
       regenerateJoinCode,
+      reassignTask,
+      notifications,
+      markNotificationsRead,
       leave,
       deleteHousehold,
     };
@@ -1030,6 +1107,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     reserveJob,
     updateHousehold,
     regenerateJoinCode,
+    reassignTask,
+    markNotificationsRead,
     leave,
     deleteHousehold,
   ]);

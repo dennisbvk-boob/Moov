@@ -107,6 +107,14 @@ export interface ActivityEntry {
   text: string;
   actor: string;
   created_at: string;
+  /**
+   * The person this entry is addressed to, when it is addressed to anyone.
+   * Null is a plain feed entry. Both members read every row either way — this
+   * is what turns one of them into a notification for one of you.
+   */
+  for_slot: 'a' | 'b' | null;
+  /** The task the entry is about, so a notification can open it. */
+  task_id: string | null;
 }
 
 export type Tab = 'home' | 'timeline' | 'list' | 'jobs' | 'money';
