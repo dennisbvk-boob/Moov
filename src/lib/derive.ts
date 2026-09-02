@@ -8,12 +8,25 @@ export interface Person {
   bg: string;
 }
 
+/**
+ * What to call one of the two people. Their own name once the plan has one,
+ * and a neutral placeholder until then — the app never invents a name.
+ */
+export function nameFor(slot: 'a' | 'b', h: Household | null): string {
+  const n = (slot === 'a' ? h?.name_a : h?.name_b)?.trim();
+  return n || (slot === 'a' ? 'Persoon 1' : 'Persoon 2');
+}
+
 export function person(who: Who, h: Household | null): Person {
-  const a = h?.name_a || 'Jij';
-  const b = h?.name_b || 'Partner';
-  if (who === 'a') return { label: a, initial: a[0]?.toUpperCase() ?? '?', bg: C.green };
-  if (who === 'b') return { label: b, initial: b[0]?.toUpperCase() ?? '?', bg: C.brown };
-  return { label: 'Samen', initial: '2', bg: C.muted };
+  if (who === 'samen') return { label: 'Samen', initial: '2', bg: C.muted };
+  const own = (who === 'a' ? h?.name_a : h?.name_b)?.trim();
+  // Without a name the label is "Persoon 1"/"Persoon 2", whose initials would
+  // both be P; the digit is what tells the two avatars apart.
+  return {
+    label: nameFor(who, h),
+    initial: own ? own[0]!.toUpperCase() : who === 'a' ? '1' : '2',
+    bg: who === 'a' ? C.green : C.brown,
+  };
 }
 
 export interface DecoratedTask extends Task {

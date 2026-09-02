@@ -123,7 +123,7 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
                     store.updateHousehold({ invited_email: v || null });
                   }
                 }}
-                placeholder="nadine@voorbeeld.nl"
+                placeholder="naam@voorbeeld.nl"
                 autoCapitalize="off"
                 autoCorrect="off"
                 spellCheck={false}

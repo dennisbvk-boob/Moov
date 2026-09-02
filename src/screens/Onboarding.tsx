@@ -91,7 +91,7 @@ export function Onboarding() {
             <input
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              placeholder="Kastanjelaan 14"
+              placeholder="Straatnaam en huisnummer"
               style={inputStyle}
             />
           </Field>
@@ -105,21 +105,21 @@ export function Onboarding() {
           </Field>
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{ flex: 1 }}>
-              <Field label="JOUW NAAM">
+              <Field label="NAAM 1">
                 <input
                   value={yourName}
                   onChange={(e) => setYourName(e.target.value)}
-                  placeholder="Dennis"
+                  placeholder="Naam 1"
                   style={inputStyle}
                 />
               </Field>
             </div>
             <div style={{ flex: 1 }}>
-              <Field label="JE PARTNER">
+              <Field label="NAAM 2">
                 <input
                   value={partnerName}
                   onChange={(e) => setPartnerName(e.target.value)}
-                  placeholder="Nadine"
+                  placeholder="Naam 2"
                   style={inputStyle}
                 />
               </Field>
@@ -127,12 +127,12 @@ export function Onboarding() {
           </div>
 
           {signedIn && (
-            <Field label="E-MAILADRES VAN JE PARTNER (OPTIONEEL)">
+            <Field label="E-MAILADRES VAN NAAM 2 (OPTIONEEL)">
               <input
                 type="email"
                 value={partnerEmail}
                 onChange={(e) => setPartnerEmail(e.target.value)}
-                placeholder="nadine@voorbeeld.nl"
+                placeholder="naam@voorbeeld.nl"
                 autoCapitalize="off"
                 autoCorrect="off"
                 spellCheck={false}
@@ -319,7 +319,7 @@ export function Onboarding() {
             <input
               value={yourName}
               onChange={(e) => setYourName(e.target.value)}
-              placeholder="Nadine"
+              placeholder="Je eigen naam"
               style={inputStyle}
             />
           </Field>

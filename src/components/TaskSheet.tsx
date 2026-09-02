@@ -5,6 +5,7 @@ import { useStore } from '../store';
 import { Attachments } from './Attachments';
 import { PartyRow } from './PartyPicker';
 import { JOBS } from '../jobs';
+import { nameFor } from '../lib/derive';
 import type { DecoratedTask } from '../lib/derive';
 import type { Who } from '../types';
 
@@ -139,8 +140,8 @@ export function TaskSheet({ task, onClose, onOpenJob }: {
             value={task.who}
             onChange={(w) => store.reassignTask(task.id, w)}
             options={[
-              { value: 'a', label: h.name_a },
-              { value: 'b', label: h.name_b },
+              { value: 'a', label: nameFor('a', h) },
+              { value: 'b', label: nameFor('b', h) },
               { value: 'samen', label: 'Samen' },
             ]}
           />
