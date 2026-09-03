@@ -91,21 +91,7 @@ Deno.serve(async (req) => {
 
     const prompt = buildPrompt(input, tasks);
 
-    const res = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json' },
-        }),
-      },
-    );
-    if (!res.ok) throw new Error(`AI_REQUEST_FAILED: ${res.status}`);
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    if (!text) throw new Error('AI_BAD_RESPONSE');
+    const text = await askGemini(apiKey, prompt);
     const parsed = JSON.parse(text) as Partial<AiPlanEdits>;
 
     // The model can only touch ids it was actually given — drop anything else.
@@ -155,6 +141,53 @@ function isValidUpdate(t: unknown): t is AiTaskUpdate {
   if (x.who !== undefined && !WHO.includes(x.who as (typeof WHO)[number])) return false;
   if (x.date !== undefined && (typeof x.date !== 'string' || !DATE_RE.test(x.date))) return false;
   return true;
+}
+
+/**
+ * Ask Gemini, retrying the failures that are worth retrying.
+ *
+ * 503 means the model is momentarily overloaded — routine on the free tier and
+ * usually gone a second later — so a single attempt fails for no good reason.
+ * Google's guidance is exponential backoff with jitter on 429 and 5xx, and no
+ * retry at all on 400/403, which would fail identically forever.
+ *
+ * Deliberately duplicated in both functions rather than shared: each file has
+ * to stand alone to be pasted into the dashboard editor.
+ */
+const MODEL = 'gemini-3.8-flash';
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+
+async function askGemini(apiKey: string, prompt: string): Promise<string> {
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json' },
+  });
+
+  let status = 0;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt) {
+      // 1s, 2s, 4s, plus jitter so two phones don't retry in lockstep
+      const wait = 2 ** (attempt - 1) * 1000 + Math.random() * 400;
+      await new Promise((r) => setTimeout(r, wait));
+    }
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+        body,
+      },
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      if (!text) throw new Error('AI_BAD_RESPONSE');
+      return text;
+    }
+    status = res.status;
+    if (!RETRYABLE.has(status)) break;
+  }
+  throw new Error(`AI_REQUEST_FAILED: ${status}`);
 }
 
 function buildPrompt(input: UpdatePlanInput, tasks: ExistingTask[]): string {
