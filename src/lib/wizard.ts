@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { functionErrorCode, functionNotDeployed, translateSharedError } from './fnError';
 import { addDays } from './dates';
 import type { CatKey } from '../theme';
 import type { Task, Who } from '../types';
@@ -40,7 +41,14 @@ export async function generateAiPlan(
     'generate-plan',
     { body: answers },
   );
-  if (error) throw new Error('De AI-wizard is niet bereikbaar. Is de Edge Function gedeployed?');
+  if (error) {
+    if (functionNotDeployed(error))
+      throw new Error(
+        'De Edge Function "generate-plan" staat nog niet op Supabase. Zie README stap 3.',
+      );
+    const code = await functionErrorCode(error);
+    throw new Error(code ? translateWizardError(code) : 'De AI-wizard is niet bereikbaar. Controleer je internetverbinding.');
+  }
   if (data?.error) throw new Error(translateWizardError(data.error));
   const rows = data?.tasks ?? [];
   if (!rows.length) throw new Error('De AI gaf geen taken terug. Probeer het nog eens.');
@@ -66,8 +74,10 @@ export async function generateAiPlan(
 }
 
 function translateWizardError(code: string): string {
-  if (code === 'NOT_SIGNED_IN') return 'Log eerst in om de AI-wizard te gebruiken.';
-  if (code === 'NOT_CONFIGURED')
-    return 'De AI-wizard is nog niet ingesteld (ontbrekende API-sleutel op de server).';
-  return 'Het maken van een plan lukte niet. Probeer het nog eens.';
+  return (
+    translateSharedError(code, 'wizard') ??
+    (code === 'MISSING_FIELDS'
+      ? 'Vul eerst het adres en de verhuisdag in.'
+      : 'Het maken van een plan lukte niet. Probeer het nog eens.')
+  );
 }

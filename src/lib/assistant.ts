@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { functionErrorCode, functionNotDeployed, translateSharedError } from './fnError';
 import { addDays } from './dates';
 import type { CatKey } from '../theme';
 import type { Household, Task, Who } from '../types';
@@ -82,7 +83,14 @@ export async function runAiUpdate(
       })),
     },
   });
-  if (error) throw new Error('De AI-assistent is niet bereikbaar. Is de Edge Function gedeployed?');
+  if (error) {
+    if (functionNotDeployed(error))
+      throw new Error(
+        'De Edge Function "update-plan" staat nog niet op Supabase. Zie README stap 3.',
+      );
+    const code = await functionErrorCode(error);
+    throw new Error(code ? translateAssistantError(code) : 'De AI-assistent is niet bereikbaar. Controleer je internetverbinding.');
+  }
   if (data?.error) throw new Error(translateAssistantError(data.error));
 
   const byId = new Map(tasks.map((t) => [t.id, t]));
@@ -120,9 +128,10 @@ export async function runAiUpdate(
 }
 
 function translateAssistantError(code: string): string {
-  if (code === 'NOT_SIGNED_IN') return 'Log eerst in om de AI-assistent te gebruiken.';
-  if (code === 'NOT_CONFIGURED')
-    return 'De AI-assistent is nog niet ingesteld (ontbrekende API-sleutel op de server).';
-  if (code === 'MISSING_INSTRUCTION') return 'Typ eerst wat je wilt aanpassen.';
-  return 'Het bijwerken van je plan lukte niet. Probeer het nog eens.';
+  return (
+    translateSharedError(code, 'assistent') ??
+    (code === 'MISSING_INSTRUCTION'
+      ? 'Typ eerst wat je wilt aanpassen.'
+      : 'Het bijwerken van je plan lukte niet. Probeer het nog eens.')
+  );
 }

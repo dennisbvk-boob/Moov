@@ -79,6 +79,48 @@ Password resets go the same way — **Users → ⋯ → Reset password** — or 
 
 ---
 
+## 3. Turn on the AI (optional)
+
+Two features call a model: the **wizard** that drafts a plan from a few answers when you create
+one, and the **assistant** that edits an existing plan ("verplaats alles van de verbouwing een
+week op"). Both run in Edge Functions so the API key stays on the server and never ships in the
+browser bundle. Skip this whole section and the app works fine — you just add tasks by hand.
+
+**Get a key.** [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → *Create API
+key*. Google's free tier needs no credit card and is a permanent rate-limited tier rather than a
+trial — roughly 10 requests a minute and 1,500 a day on the Flash models. Creating a plan is one
+request, so that is thousands of moves a day. Limits are Google's to change without notice.
+
+**Deploy both functions.** Supabase Dashboard → **Edge Functions** → *Create a function*, once per
+function, named exactly:
+
+| Name | File | What breaks without it |
+|---|---|---|
+| `generate-plan` | [`supabase/functions/generate-plan/index.ts`](supabase/functions/generate-plan/index.ts) | "Laat de AI het plan invullen" during onboarding |
+| `update-plan` | [`supabase/functions/update-plan/index.ts`](supabase/functions/update-plan/index.ts) | the **AI** button in the header |
+
+Paste the file contents in and deploy. It is easy to do one and forget the other — they are two
+separate features.
+
+**Add the secret.** Edge Functions → **Secrets** → add `GEMINI_API_KEY` with the key from step
+one. A function without it answers `NOT_CONFIGURED` and the app says so.
+
+To check what is actually live, ask the functions themselves — an unauthenticated call is enough
+to tell "deployed" from "missing" (`<project-url>` and the anon key are both in Project Settings →
+API):
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X POST '<project-url>/functions/v1/generate-plan' -H 'apikey: <anon-key>' -H 'Content-Type: application/json' -d '{}'
+```
+
+`400` means it is deployed and rejected the anonymous call, which is correct. `404` means it isn't
+there.
+
+**Swapping providers.** Nothing outside the two Edge Functions knows which model is behind this —
+the app posts answers and receives JSON tasks. To move to Groq, OpenRouter, Mistral or anything
+else with an OpenAI-shaped endpoint, change the `fetch` call and the secret name in those two
+files; `isValidTask()` already throws away anything that doesn't fit the schema, whatever wrote it.
+
 ## Vercel or Supabase?
 
 Both — they don't overlap. **Vercel hosts the app** (the HTML, JS and icons that land on your
@@ -91,7 +133,7 @@ login, row-level security, signed file URLs and live sync all become code you wr
 That's the bulk of what this app leans on, so it isn't a saving. The current split is the cheap
 path: Vercel free tier + Supabase free tier, €0 for two people.
 
-## 3. Deploy it
+## 4. Deploy it
 
 ### GitHub Pages
 
@@ -142,7 +184,7 @@ That builds with `VITE_BASE=/Moov/` and serves it at http://localhost:4173/Moov/
 
 ---
 
-## 4. Get it onto both phones
+## 5. Get it onto both phones
 
 1. Open the deployed URL in **Safari** on your iPhone.
 2. Log in with the email address and password you were given. Once per phone — the session is
@@ -214,9 +256,9 @@ rest of your data, and are read through short-lived signed URLs — nothing is p
 - **Nothing is invented for you.** A plan starts empty. Tasks arrive one of two ways: you type
   them in, or the AI wizard writes them from the answers you gave it about your move. There is
   no example plan and no placeholder content in the database.
-- **The AI wizard is opt-in and server-side.** It runs in the `generate-plan` Edge Function so
-  the API key never reaches the browser, and it is told not to invent company names or phone
-  numbers.
+- **The AI is opt-in and server-side.** It runs in Edge Functions so the API key never reaches
+  the browser, and it is told not to invent company names or phone numbers. Not set up? Every
+  other part of the app works without it — see [step 3](#3-turn-on-the-ai-optional).
 - **Jobs are reference data.** The 5 DIY jobs and their tool lists live in `jobs.ts`, identical
   for everyone; only your ticks and reservations are per-household.
 - **One party, both purposes.** The contractor you book for a job is the contractor you pay.
