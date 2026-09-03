@@ -123,6 +123,20 @@ The project ref is the subdomain of your project URL: `https://<project-ref>.sup
 **Add the secret.** Edge Functions → **Secrets** → add `GEMINI_API_KEY` with the key from step
 one. A function without it answers `NOT_CONFIGURED` and the app says so.
 
+**If it fails, the message says which thing failed** — they are genuinely different problems:
+
+| What you see | What to do |
+|---|---|
+| geen API-sleutel op de server | set `GEMINI_API_KEY` |
+| De API-sleutel wordt geweigerd (403) | wrong or revoked key |
+| gratis limiet bereikt (429) | wait — 10/min, 1,500/day |
+| even overbelast (5xx) | Google's end; already retried, try again shortly |
+| Het AI-model bestaat niet (404) | update `MODEL` in both functions |
+
+A 503 from Gemini just means the model was busy for a moment, which is routine on the free tier.
+Both functions retry those (and 429/500/502/504) up to four times with exponential backoff and
+jitter, and never retry 400/403 — a rejected key fails the same way however often you ask.
+
 To check what is actually live, ask the functions themselves — an unauthenticated call is enough
 to tell "deployed" from "missing" (`<project-url>` and the anon key are both in Project Settings →
 API):
