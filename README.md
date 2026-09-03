@@ -102,6 +102,24 @@ function, named exactly:
 Paste the file contents in and deploy. It is easy to do one and forget the other — they are two
 separate features.
 
+> **"Entrypoint path does not exist — …/source/index.ts"** means the deploy looked for a file
+> called `index.ts` and the editor had it under another name (the function's own name, usually).
+> Rename the file in the editor's file list to exactly `index.ts` and deploy again.
+
+**Or deploy from this repo instead**, which avoids that trap entirely — the folder layout here is
+already the one the CLI expects. Log in once (opens a browser), then deploy:
+
+```bash
+npx supabase@latest login
+```
+
+```bash
+npx supabase@latest functions deploy generate-plan update-plan --project-ref <project-ref>
+```
+
+The project ref is the subdomain of your project URL: `https://<project-ref>.supabase.co`. Add
+`--use-api` if it asks for Docker.
+
 **Add the secret.** Edge Functions → **Secrets** → add `GEMINI_API_KEY` with the key from step
 one. A function without it answers `NOT_CONFIGURED` and the app says so.
 
