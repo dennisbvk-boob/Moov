@@ -243,7 +243,10 @@ function AddButton({ onClick }: { onClick: () => void }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        boxShadow: '0 4px 10px rgba(26,23,20,.14),0 12px 28px rgba(26,23,20,.16)',
+        // Three layers: a tight contact shadow so the button reads as touching
+        // the surface, then two wider casts for the height above it.
+        boxShadow:
+          '0 2px 4px rgba(26,23,20,.16),0 8px 16px rgba(26,23,20,.22),0 18px 40px rgba(26,23,20,.26)',
       }}
     >
       <svg aria-hidden width="22" height="22" viewBox="0 0 22 22" fill="none">
