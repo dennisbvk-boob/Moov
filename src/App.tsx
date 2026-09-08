@@ -174,25 +174,6 @@ function Plan() {
             </button>
           )}
           <button
-            onClick={() => setAdding(true)}
-            aria-label="Taak toevoegen"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: '50%',
-              background: C.greenSoft,
-              color: C.green,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              font: `500 21px ${SANS}`,
-              lineHeight: 1,
-              paddingBottom: 2,
-            }}
-          >
-            +
-          </button>
-          <button
             onClick={() => setSettings(true)}
             aria-label="Instellingen"
             style={{ display: 'flex', alignItems: 'center' }}
@@ -208,7 +189,15 @@ function Plan() {
       {/* content */}
       <div
         ref={scroller}
-        style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+        style={{
+          flex: 1,
+          overflow: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+          // Room for the floating add button, so the last row of a list never
+          // ends up underneath it.
+          paddingBottom: 48,
+        }}
       >
         {tab === 'home' && <Today plan={plan} onOpenTask={setOpenTask} onTab={setTab} />}
         {tab === 'timeline' && <Timeline plan={plan} onOpenTask={setOpenTask} />}
@@ -216,6 +205,8 @@ function Plan() {
         {tab === 'jobs' && <Jobs plan={plan} onOpenJob={setOpenJob} />}
         {tab === 'money' && <Money plan={plan} onOpenTask={setOpenTask} />}
       </div>
+
+      <AddButton onClick={() => setAdding(true)} />
 
       <TabBar tab={tab} onTab={setTab} />
 
@@ -226,6 +217,39 @@ function Plan() {
       <AiAssistantSheet open={assistant} onClose={() => setAssistant(false)} />
       <NotificationsSheet open={inbox} onClose={() => setInbox(false)} onOpenTask={setOpenTask} />
     </>
+  );
+}
+
+/**
+ * The one way to add something, parked above the tab bar where a thumb already
+ * is. It floats over the scroller rather than living in the header so it stays
+ * reachable on every tab without stealing a row of content.
+ */
+function AddButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Taak toevoegen"
+      style={{
+        position: 'absolute',
+        right: 18,
+        bottom: 'calc(env(safe-area-inset-bottom) + 78px)',
+        zIndex: 40,
+        width: 52,
+        height: 52,
+        borderRadius: '50%',
+        background: C.green,
+        color: '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 4px 10px rgba(26,23,20,.14),0 12px 28px rgba(26,23,20,.16)',
+      }}
+    >
+      <svg aria-hidden width="22" height="22" viewBox="0 0 22 22" fill="none">
+        <path d="M11 4.5v13M4.5 11h13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </button>
   );
 }
 
