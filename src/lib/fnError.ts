@@ -28,8 +28,11 @@ export function functionNotDeployed(error: unknown): boolean {
   return ctx instanceof Response && ctx.status === 404;
 }
 
-/** Codes both AI functions can return, in the words a user can act on. */
-export function translateSharedError(code: string, what: 'wizard' | 'assistent'): string | null {
+/** Which AI feature is talking, for messages that name it. */
+export type AiFeature = 'wizard' | 'assistent' | 'hulp';
+
+/** Codes every AI function can return, in the words a user can act on. */
+export function translateSharedError(code: string, what: AiFeature): string | null {
   if (code === 'NOT_SIGNED_IN') return `Log eerst in om de AI-${what} te gebruiken.`;
   if (code === 'NOT_CONFIGURED')
     return `De AI-${what} heeft nog geen API-sleutel op de server. Zet GEMINI_API_KEY onder Supabase → Edge Functions → Secrets (zie README stap 3).`;
@@ -46,7 +49,7 @@ export function translateSharedError(code: string, what: 'wizard' | 'assistent')
  * itself, 403 is the key, 429 is the free quota. Telling someone to check
  * their key because a model was busy sends them digging for nothing.
  */
-function upstream(status: number, what: 'wizard' | 'assistent'): string {
+function upstream(status: number, what: AiFeature): string {
   if (status === 429)
     return `Het gratis limiet van de AI-dienst is even bereikt (10 verzoeken per minuut, 1.500 per dag). Wacht een minuutje en probeer opnieuw.`;
   if (status === 403 || status === 401)

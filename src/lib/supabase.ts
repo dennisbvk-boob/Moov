@@ -18,6 +18,13 @@ export const supabase: SupabaseClient | null =
 
 export const syncEnabled = supabase !== null;
 
+/**
+ * Where this project's Edge Functions live. Needed as a plain URL — not
+ * through the client — because the calendar feed is fetched by Google's and
+ * Apple's servers, which know nothing about Supabase.
+ */
+export const functionsBase = url ? `${url.replace(/\/$/, '')}/functions/v1` : null;
+
 export interface Session {
   userId: string;
   email: string;

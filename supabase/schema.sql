@@ -22,6 +22,13 @@ create table if not exists households (
 -- other person is in.
 alter table households add column if not exists invited_email text;
 
+-- Secret in the calendar feed URL. Null until someone turns the feed on. The
+-- feed is served by the "calendar-feed" Edge Function, which is fetched by
+-- Google's and Apple's servers and so cannot carry a login — this token is
+-- what stands in for one. Regenerating it kills every URL already shared.
+alter table households add column if not exists calendar_token text;
+create index if not exists households_calendar_token_idx on households (calendar_token);
+
 create table if not exists members (
   household_id uuid not null references households(id) on delete cascade,
   user_id      uuid not null references auth.users(id) on delete cascade,
@@ -70,6 +77,16 @@ create index if not exists tasks_household_idx on tasks (household_id, date);
 -- who actually carries the task out, when that is not one of you two
 alter table tasks add column if not exists party_id uuid references parties(id) on delete set null;
 create index if not exists tasks_party_idx on tasks (party_id);
+
+-- A recurring task: {"unit":"week","interval":1}. Null is a one-off, which is
+-- almost everything during a move. Ticking a recurring task off moves its date
+-- forward instead of closing it, so the list never fills with 52 done rows.
+alter table tasks add column if not exists repeat jsonb;
+
+-- Looked-up instructions for carrying the task out — steps, materials,
+-- warnings and the sources they came from. Cached here so the answer syncs to
+-- both phones, works offline, and is paid for once per task.
+alter table tasks add column if not exists help jsonb;
 
 -- One row per material you ticked on a DIY job. key = '<jobId>-<materialIndex>'.
 create table if not exists job_picks (
