@@ -3,6 +3,7 @@ import { C, MONO, SANS, SHADOW } from '../theme';
 import { Button, Eyebrow, Field, Sheet, inputStyle } from './ui';
 import { useStore } from '../store';
 import { syncEnabled } from '../lib/supabase';
+import { CalendarFeed } from './CalendarFeed';
 
 export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const store = useStore();
@@ -174,6 +175,31 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
                 />
               </Field>
             </div>
+          </div>
+        </div>
+
+        <CalendarFeed />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Eyebrow>VANDAAG</Eyebrow>
+          <button
+            onClick={() => store.setHideCountdown(!store.hideCountdown)}
+            style={{
+              background: C.card,
+              borderRadius: 14,
+              padding: 14,
+              boxShadow: SHADOW.card,
+              textAlign: 'left',
+              font: `500 14px ${SANS}`,
+              color: C.ink,
+            }}
+          >
+            {store.hideCountdown
+              ? 'Aftelling naar de verhuisdag weer tonen'
+              : 'Aftelling naar de verhuisdag verbergen'}
+          </button>
+          <div style={{ font: `400 11.5px/1.45 ${SANS}`, color: C.muted }}>
+            Geldt alleen voor dit toestel. De voortgangsbalk blijft staan.
           </div>
         </div>
 

@@ -2,7 +2,9 @@
 
 The Verhuisplan design prototype, rebuilt as a real app you and your partner can both use:
 a shared moving plan with tasks, a timeline, DIY jobs with tool rental/purchase lists, and
-invoices — live-synced between two phones.
+invoices — live-synced between two phones. It has since grown past the move: recurring tasks,
+search, a calendar subscription and a per-task "how do I actually do this" lookup make it work
+as a general household to-do list once the boxes are unpacked.
 
 It is a **PWA**, not a native iOS app. You add it to the iPhone home screen and it opens
 full-screen with its own icon, no Safari chrome. See [Why not native](#why-not-a-native-ios-app).
@@ -20,8 +22,10 @@ moov/
     theme.ts             design tokens, lifted from the prototype
     screens/             AuthGate · Onboarding · Today · Timeline · List · Jobs · Money
     components/          sheets (task, job, party, settings), attachments, tab bar
-    lib/                 dates, derived display props, plan maths, supabase client
+    lib/                 dates, derived display props, plan maths, supabase client,
+                         recurrence, calendar (ICS) building
   supabase/schema.sql    tables, row-level security, join-by-code function
+  supabase/functions/    generate-plan · update-plan · task-help · calendar-feed
   public/                icons, manifest, service worker
 ```
 
@@ -60,6 +64,13 @@ You need a free Supabase project. I can't create the account for you — these s
 
 A green dot appears next to `MOOV.NL` in the header when it's syncing.
 
+> **Already had this running before recurring tasks and the calendar feed existed?** Re-run
+> [`supabase/schema.sql`](supabase/schema.sql) — the whole file, it is written to be safe to
+> re-run. It adds three columns (`tasks.repeat`, `tasks.help`, `households.calendar_token`).
+> Skip it and the app still opens, but every task it tries to push carries a column the database
+> doesn't have, the write is rejected, and syncing quietly stops catching up — the dot goes
+> amber and stays there.
+
 ### Giving someone access
 
 There is no sign-up screen — you hand out accounts:
@@ -81,26 +92,36 @@ Password resets go the same way — **Users → ⋯ → Reset password** — or 
 
 ## 3. Turn on the AI (optional)
 
-Two features call a model: the **wizard** that drafts a plan from a few answers when you create
-one, and the **assistant** that edits an existing plan ("verplaats alles van de verbouwing een
-week op"). Both run in Edge Functions so the API key stays on the server and never ships in the
-browser bundle. Skip this whole section and the app works fine — you just add tasks by hand.
+Three features call a model: the **wizard** that drafts a plan from a few answers when you create
+one, the **assistant** that edits an existing plan ("verplaats alles van de verbouwing een week
+op"), and **"Hoe pak ik dit aan?"** inside a task, which looks up the steps, the materials and the
+pitfalls for that one job. All three run in Edge Functions so the API key stays on the server and
+never ships in the browser bundle. Skip this whole section and the app works fine — you just add
+tasks by hand.
 
 **Get a key.** [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → *Create API
 key*. Google's free tier needs no credit card and is a permanent rate-limited tier rather than a
 trial — roughly 10 requests a minute and 1,500 a day on the Flash models. Creating a plan is one
 request, so that is thousands of moves a day. Limits are Google's to change without notice.
 
-**Deploy both functions.** Supabase Dashboard → **Edge Functions** → *Create a function*, once per
+**Deploy all three.** Supabase Dashboard → **Edge Functions** → *Create a function*, once per
 function, named exactly:
 
 | Name | File | What breaks without it |
 |---|---|---|
 | `generate-plan` | [`supabase/functions/generate-plan/index.ts`](supabase/functions/generate-plan/index.ts) | "Laat de AI het plan invullen" during onboarding |
 | `update-plan` | [`supabase/functions/update-plan/index.ts`](supabase/functions/update-plan/index.ts) | the **AI** button in the header |
+| `task-help` | [`supabase/functions/task-help/index.ts`](supabase/functions/task-help/index.ts) | "Hoe pak ik dit aan?" inside a task |
 
-Paste the file contents in and deploy. It is easy to do one and forget the other — they are two
-separate features.
+Paste the file contents in and deploy. It is easy to do one and forget the others — they are
+separate features that fail separately.
+
+`task-help` differs from the other two in one way: it asks Gemini with **Google Search switched
+on**, so the answer is grounded in pages that exist and comes back with the links it used. That
+also means it cannot force a JSON response type — the two settings are mutually exclusive — so it
+asks for JSON in the prompt and parses leniently. If your model or API version refuses the search
+tool with a 400, the function quietly retries without it and you get an ungrounded answer with no
+sources rather than an error.
 
 > **"Entrypoint path does not exist — …/source/index.ts"** means the deploy looked for a file
 > called `index.ts` and the editor had it under another name (the function's own name, usually).
@@ -114,7 +135,7 @@ npx supabase@latest login
 ```
 
 ```bash
-npx supabase@latest functions deploy generate-plan update-plan --project-ref <project-ref>
+npx supabase@latest functions deploy generate-plan update-plan task-help --project-ref <project-ref>
 ```
 
 The project ref is the subdomain of your project URL: `https://<project-ref>.supabase.co`. Add
@@ -131,7 +152,7 @@ one. A function without it answers `NOT_CONFIGURED` and the app says so.
 | De API-sleutel wordt geweigerd (403) | wrong or revoked key |
 | gratis limiet bereikt (429) | wait — 10/min, 1,500/day |
 | even overbelast (5xx) | Google's end; already retried, try again shortly |
-| Het AI-model bestaat niet (404) | update `MODEL` in both functions |
+| Het AI-model bestaat niet (404) | update `MODEL` in all three functions |
 
 A 503 from Gemini just means the model was busy for a moment, which is routine on the free tier.
 Both functions retry those (and 429/500/502/504) up to four times with exponential backoff and
@@ -148,7 +169,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST '<project-url>/functions/v1/gen
 `400` means it is deployed and rejected the anonymous call, which is correct. `404` means it isn't
 there.
 
-**Swapping providers.** Nothing outside the two Edge Functions knows which model is behind this —
+**Swapping providers.** Nothing outside the Edge Functions knows which model is behind this —
 the app posts answers and receives JSON tasks. To move to Groq, OpenRouter, Mistral or anything
 else with an OpenAI-shaped endpoint, change the `fetch` call and the secret name in those two
 files; `isValidTask()` already throws away anything that doesn't fit the schema, whatever wrote it.
@@ -238,6 +259,51 @@ The code is the key, so treat it like one. Two knobs in Settings if you need the
 
 ---
 
+## 6. Put the plan in your calendar (optional)
+
+Two routes, and they answer different questions.
+
+**One task, right now.** Open a task → **In je agenda** → *Google Agenda* opens a pre-filled new
+event you still have to save, *Agenda-bestand* downloads a `.ics` that Apple Calendar and Outlook
+open. Neither needs setup, a login, or anything deployed. A recurring task carries its recurrence
+across as an `RRULE`, so it repeats in your calendar too.
+
+**The whole plan, kept up to date.** A calendar subscription: one URL you add once, and every task
+— including ones added later — shows up beside the rest of your week. This needs the
+`calendar-feed` Edge Function, and it is deployed differently from the other three:
+
+1. Create a function named `calendar-feed` from
+   [`supabase/functions/calendar-feed/index.ts`](supabase/functions/calendar-feed/index.ts).
+2. **Turn off "Verify JWT" for this one function.** Google's and Apple's servers fetch the URL
+   with no login at all; a function that demands an `Authorization` header answers them 401 and
+   the calendar stays permanently empty. From the CLI that is
+   `npx supabase@latest functions deploy calendar-feed --no-verify-jwt --project-ref <ref>`.
+3. Add the `SUPABASE_SERVICE_ROLE_KEY` secret under Edge Functions → Secrets. There is no
+   logged-in user here whose row-level security could grant access, so the function reads the
+   plan with the service role instead. That key stays on the server — never put it in the app's
+   own env, where the browser build would ship it.
+
+Then in the app: **Settings → Agenda → Agenda-koppeling aanzetten**. You get a URL to paste into
+Google Agenda (on a computer: *Andere agenda's → + → Via URL*) or to tap on the phone, which
+offers to subscribe directly.
+
+**What to expect:**
+
+- **The token in the URL is the credential.** Anyone holding that link can read the plan, without
+  logging in — that is how subscribed calendars work everywhere. *Nieuwe link maken* invalidates
+  the old one instantly; *Uitzetten* kills the feed altogether.
+- **Google refreshes external calendars on its own schedule**, often only a few times a day, and
+  there is no way to make it hurry. Apple Calendar refreshes far more often. Move a task and it
+  will arrive — just not necessarily within the hour.
+- **Reminders are in the feed but Google ignores them** on subscribed calendars. Apple honours
+  them: an hour before a timed task, at 09:00 on the day of an all-day one. A single task imported
+  through *Agenda-bestand* lands in your own calendar and does alarm in both.
+- **Times are written "floating"** — no timezone attached — so they read as the same wall-clock
+  time wherever the calendar is opened. Right for one household in one country, and it avoids two
+  copies of timezone maths that would eventually disagree.
+
+---
+
 ## Two things worth explaining
 
 ### Owner vs executor
@@ -296,6 +362,21 @@ rest of your data, and are read through short-lived signed URLs — nothing is p
 - **One party, both purposes.** The contractor you book for a job is the contractor you pay.
   Payments pick from the same list as everything else, so every invoice rolls up under a real
   party in **Geld → Partijen** instead of a name typed twice.
+- **A recurring task is never finished.** Tick one off and it moves to its next date instead of
+  closing, and if you forgot it for a month it lands ahead of today rather than immediately
+  overdue. That keeps the list from filling with fifty-two identical done rows — the activity
+  feed is what remembers you did it. Month steps clamp: the 31st of a month that has 30 days
+  becomes the 30th, not the 1st of the next.
+- **Search covers everything at once.** The magnifier in the header searches titles, notes,
+  parties and looked-up summaries across every tab, open and done — the tab you filed it under is
+  usually the thing you have forgotten. It runs entirely on the copy already in memory, so it
+  works offline and needs no index.
+- **Looked-up instructions live on the task.** "Hoe pak ik dit aan?" writes its answer into the
+  task itself, so it syncs to the other phone, survives going offline, and costs one API call per
+  task rather than one per time you open it. *Opnieuw opzoeken* replaces it.
+- **The countdown can be dismissed.** Once the move is behind you it is a number climbing away
+  from a day that stopped mattering. The × on the card hides it on that device only; the progress
+  bar stays. Settings puts it back.
 
 ### Security
 
@@ -338,6 +419,11 @@ Capacitor with the native shell around it — nothing here has to be thrown away
 ## Not built yet
 
 - Push notifications that reach a **closed** app ("aannemer komt over een uur") — needs web-push
-  keys or the native shell. In-app notifications for task assignments do work; see above.
+  keys or the native shell. In-app notifications for task assignments do work; see above. The
+  calendar subscription covers most of this in practice: your phone's own calendar does the
+  alarming, which is why the feed carries reminders at all.
+- Two-way calendar sync. The feed is read-only by design — writing into someone's Google Calendar
+  means OAuth, a Google Cloud project, and stored refresh tokens, which for a two-person app is a
+  lot of moving parts to keep alive for the privilege of editing a plan you can already edit here.
 - More than two people per plan (the database enforces two on purpose — `tasks.who` is
   `a` / `b` / `samen`, so a third person has nowhere to sit).

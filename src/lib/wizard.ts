@@ -67,6 +67,8 @@ export async function generateAiPlan(
     amount: r.amount ?? null,
     vendor: r.vendor ?? null,
     job_id: null,
+    repeat: null,
+    help: null,
     done: false,
     done_by: null,
     updated_at: now,

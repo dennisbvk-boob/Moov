@@ -4,8 +4,9 @@ import { Button, Field, Segmented, Sheet, inputStyle } from './ui';
 import { nameFor } from '../lib/derive';
 import { useStore, useToday } from '../store';
 import { PartyRow } from './PartyPicker';
+import { RepeatPicker } from './RepeatPicker';
 import type { CatKey } from '../theme';
-import type { Who } from '../types';
+import type { Repeat, Who } from '../types';
 
 export function AddTaskSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const store = useStore();
@@ -20,6 +21,7 @@ export function AddTaskSheet({ open, onClose }: { open: boolean; onClose: () => 
   const [time, setTime] = useState('');
   const [note, setNote] = useState('');
   const [amount, setAmount] = useState('');
+  const [repeat, setRepeat] = useState<Repeat | null>(null);
 
   if (!open) return null;
 
@@ -32,6 +34,7 @@ export function AddTaskSheet({ open, onClose }: { open: boolean; onClose: () => 
     setTime('');
     setNote('');
     setAmount('');
+    setRepeat(null);
   };
 
   const submit = () => {
@@ -48,6 +51,7 @@ export function AddTaskSheet({ open, onClose }: { open: boolean; onClose: () => 
       amount: cat === 'betaling' && Number.isFinite(parsed as number) ? parsed : null,
       // Who gets paid is the party, not a second free-text name beside it.
       vendor: null,
+      repeat,
     });
     reset();
     onClose();
@@ -123,6 +127,8 @@ export function AddTaskSheet({ open, onClose }: { open: boolean; onClose: () => 
             </Field>
           </div>
         </div>
+
+        <RepeatPicker value={repeat} onChange={setRepeat} />
 
         {cat === 'betaling' && (
           <Field label="BEDRAG (€)">

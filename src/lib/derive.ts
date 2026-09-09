@@ -1,6 +1,7 @@
 import { C, CATS } from '../theme';
 import type { Household, Task, Who } from '../types';
 import { daysBetween, fmtShort, money } from './dates';
+import { repeatLabel } from './repeat';
 
 export interface Person {
   label: string;
@@ -36,6 +37,8 @@ export interface DecoratedTask extends Task {
   color: string;
   soft: string;
   who_: Person;
+  /** "elke week" when the task recurs, null for a one-off. */
+  repeatText: string | null;
   late: boolean;
   titleColor: string;
   deco: 'line-through' | 'none';
@@ -64,6 +67,10 @@ export function decorate(
   const w = person(t.who, h);
   const late = !t.done && daysBetween(today, t.date) < 0;
   const until = daysBetween(today, t.date);
+  const rep = repeatLabel(t.repeat);
+  // The arrow carries the meaning at a glance on a crowded card; the words
+  // after it are for when you actually stop to read the line.
+  const repSuffix = rep ? ' · ↻ ' + rep : '';
 
   return {
     ...t,
@@ -72,6 +79,7 @@ export function decorate(
     color: c.color,
     soft: c.soft,
     who_: w,
+    repeatText: rep,
     late,
     titleColor: t.done ? C.ghost : C.ink,
     deco: t.done ? 'line-through' : 'none',
@@ -79,8 +87,8 @@ export function decorate(
     // glue weekday to day number so the timeline gutter breaks as "wo 12 / aug"
     dayLabel: fmtShort(t.date).replace(' ', '\u00a0'),
     dateLabel: fmtShort(t.date),
-    metaLine: (t.time ? t.time + ' · ' : '') + w.label,
-    listMeta: fmtShort(t.date) + (t.time ? ' · ' + t.time : '') + ' · ' + w.label,
+    metaLine: (t.time ? t.time + ' · ' : '') + w.label + repSuffix,
+    listMeta: fmtShort(t.date) + (t.time ? ' · ' + t.time : '') + ' · ' + w.label + repSuffix,
     amountLabel: t.amount ? money(t.amount) : '',
     vendorLabel: partyName || t.vendor || t.title,
     dueColor: late ? C.clay : C.faint,

@@ -12,6 +12,7 @@ import { AddTaskSheet } from './components/AddTaskSheet';
 import { SettingsSheet } from './components/SettingsSheet';
 import { AiAssistantSheet } from './components/AiAssistantSheet';
 import { NotificationsSheet } from './components/NotificationsSheet';
+import { SearchSheet } from './components/SearchSheet';
 import { AuthGate } from './screens/AuthGate';
 import { Onboarding } from './screens/Onboarding';
 import { Today } from './screens/Today';
@@ -99,6 +100,7 @@ function Plan() {
   const [settings, setSettings] = useState(false);
   const [assistant, setAssistant] = useState(false);
   const [inbox, setInbox] = useState(false);
+  const [searching, setSearching] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
   // Jump back to the top when switching tabs — otherwise you land mid-list.
@@ -151,6 +153,7 @@ function Plan() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
+          <SearchButton onClick={() => setSearching(true)} />
           <Bell count={store.notifications.length} onClick={() => setInbox(true)} />
           {store.session && (
             <button
@@ -216,6 +219,12 @@ function Plan() {
       <SettingsSheet open={settings} onClose={() => setSettings(false)} />
       <AiAssistantSheet open={assistant} onClose={() => setAssistant(false)} />
       <NotificationsSheet open={inbox} onClose={() => setInbox(false)} onOpenTask={setOpenTask} />
+      <SearchSheet
+        open={searching}
+        plan={plan}
+        onClose={() => setSearching(false)}
+        onOpenTask={setOpenTask}
+      />
     </>
   );
 }
@@ -251,6 +260,34 @@ function AddButton({ onClick }: { onClick: () => void }) {
     >
       <svg aria-hidden width="22" height="22" viewBox="0 0 22 22" fill="none">
         <path d="M11 4.5v13M4.5 11h13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * Search lives in the header rather than on the list tab, because what you are
+ * looking for is usually on a tab you are not on.
+ */
+function SearchButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Zoeken"
+      style={{
+        width: 32,
+        height: 32,
+        borderRadius: '50%',
+        background: C.sand,
+        color: C.muted,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <svg aria-hidden width="15" height="15" viewBox="0 0 16 16" fill="none">
+        <circle cx="7" cy="7" r="4.6" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M10.4 10.4 14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     </button>
   );

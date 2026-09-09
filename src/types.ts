@@ -29,6 +29,41 @@ export interface Party {
   created_at: string;
 }
 
+/** How often a task comes back after you tick it off. */
+export type RepeatUnit = 'dag' | 'week' | 'maand' | 'jaar';
+
+export interface Repeat {
+  unit: RepeatUnit;
+  /** Every n units — 1 for "elke week", 2 for "elke 2 weken". */
+  interval: number;
+}
+
+/** One thing you need in hand before the job starts. */
+export interface HelpMaterial {
+  name: string;
+  mode: 'HUUR' | 'KOOP' | 'IN HUIS';
+  /** Why this one is on the list, in a few words. */
+  why: string | null;
+}
+
+/**
+ * What was looked up about how to carry a task out. Stored on the task itself
+ * rather than fetched each time: it survives offline, both phones see the same
+ * answer, and a lookup that costs money happens once instead of on every open.
+ */
+export interface TaskHelp {
+  summary: string;
+  /** The actual procedure, in the order you do it. */
+  steps: string[];
+  materials: HelpMaterial[];
+  /** Mistakes worth knowing about before you start. */
+  warnings: string[];
+  minutes: number | null;
+  /** Where it came from, so instructions about your own house are checkable. */
+  sources: { title: string; url: string }[];
+  created_at: string;
+}
+
 export interface Task {
   id: string;
   household_id: string;
@@ -47,6 +82,10 @@ export interface Task {
   vendor: string | null;
   /** links a task to a DIY job from the catalogue */
   job_id: string | null;
+  /** Null for a one-off. Set, and ticking it off moves it to the next date. */
+  repeat: Repeat | null;
+  /** Looked-up instructions for this task, once someone has asked for them. */
+  help: TaskHelp | null;
   done: boolean;
   done_by: string | null;
   updated_at: string;
@@ -64,6 +103,11 @@ export interface Household {
    * second person in; set to an address and only that account may join.
    */
   invited_email: string | null;
+  /**
+   * Secret in the calendar feed URL. Null until someone turns the feed on;
+   * regenerating it makes every previously shared URL stop working.
+   */
+  calendar_token: string | null;
 }
 
 export interface Material {

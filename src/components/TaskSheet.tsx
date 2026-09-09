@@ -4,10 +4,13 @@ import { Button, Eyebrow, Field, Segmented, Sheet, inputStyle } from './ui';
 import { useStore } from '../store';
 import { Attachments } from './Attachments';
 import { PartyRow } from './PartyPicker';
+import { RepeatPicker } from './RepeatPicker';
+import { AddToCalendar } from './AddToCalendar';
+import { TaskHelpPanel } from './TaskHelpPanel';
 import { JOBS } from '../jobs';
 import { nameFor } from '../lib/derive';
 import type { DecoratedTask } from '../lib/derive';
-import type { Who } from '../types';
+import type { Repeat, Who } from '../types';
 
 export function TaskSheet({ task, onClose, onOpenJob }: {
   task: DecoratedTask | null;
@@ -18,6 +21,7 @@ export function TaskSheet({ task, onClose, onOpenJob }: {
   const h = store.household!;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ title: '', date: '', time: '', note: '', amount: '' });
+  const [repeat, setRepeat] = useState<Repeat | null>(null);
 
   useEffect(() => {
     if (task) {
@@ -29,6 +33,7 @@ export function TaskSheet({ task, onClose, onOpenJob }: {
         note: task.note ?? '',
         amount: task.amount != null ? String(task.amount) : '',
       });
+      setRepeat(task.repeat);
     }
   }, [task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -43,6 +48,7 @@ export function TaskSheet({ task, onClose, onOpenJob }: {
       time: draft.time.trim() || null,
       note: draft.note.trim() || null,
       amount: Number.isFinite(amount as number) ? amount : task.amount,
+      repeat,
     });
     setEditing(false);
   };
@@ -69,6 +75,21 @@ export function TaskSheet({ task, onClose, onOpenJob }: {
               {task.time ? ' · ' + task.time : ''}
               {task.amount ? ' · ' + task.amountLabel : ''}
             </span>
+            {task.repeatText && (
+              <span
+                style={{
+                  font: `500 10px ${MONO}`,
+                  letterSpacing: '.06em',
+                  padding: '3px 7px',
+                  borderRadius: 6,
+                  background: C.greenSoft,
+                  color: C.green,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                ↻ {task.repeatText.toUpperCase()}
+              </span>
+            )}
           </div>
 
           {editing ? (
@@ -120,6 +141,7 @@ export function TaskSheet({ task, onClose, onOpenJob }: {
                 </Field>
               </div>
             </div>
+            <RepeatPicker value={repeat} onChange={setRepeat} />
             {task.cat === 'betaling' && (
               <Field label="BEDRAG (€)">
                 <input
@@ -152,6 +174,10 @@ export function TaskSheet({ task, onClose, onOpenJob }: {
           onPick={(id) => store.patchTask(task.id, { party_id: id })}
           payment={task.cat === 'betaling'}
         />
+
+        <TaskHelpPanel task={task} />
+
+        <AddToCalendar task={task} address={h.address} />
 
         <Attachments taskId={task.id} />
 
@@ -229,9 +255,11 @@ export function TaskSheet({ task, onClose, onOpenJob }: {
                 ? task.cat === 'betaling'
                   ? 'Toch nog niet betaald'
                   : 'Toch nog niet af'
-                : task.cat === 'betaling'
-                  ? 'Markeer als betaald'
-                  : 'Markeer als af'}
+                : task.repeat
+                  ? 'Afvinken · komt terug'
+                  : task.cat === 'betaling'
+                    ? 'Markeer als betaald'
+                    : 'Markeer als af'}
             </Button>
             <div style={{ display: 'flex', gap: 8 }}>
               <Button tone="quiet" onClick={() => setEditing(true)}>

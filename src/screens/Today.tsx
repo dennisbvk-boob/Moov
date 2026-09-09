@@ -39,38 +39,64 @@ export function Today({ plan, onOpenTask, onTab }: {
           boxShadow: SHADOW.raised,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
-            <Eyebrow>VERHUISDAG</Eyebrow>
-            <div
-              style={{
-                font: `700 40px/1 ${SANS}`,
-                letterSpacing: '-.035em',
-              }}
-            >
-              {countdown}
+        {store.hideCountdown ? (
+          <Eyebrow>VOORTGANG</Eyebrow>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+              <Eyebrow>VERHUISDAG</Eyebrow>
+              <div
+                style={{
+                  font: `700 40px/1 ${SANS}`,
+                  letterSpacing: '-.035em',
+                }}
+              >
+                {countdown}
+              </div>
+              <div style={{ font: `400 13px/1.35 ${SANS}`, color: C.muted }}>{fmtLong(h.move_date)}</div>
             </div>
-            <div style={{ font: `400 13px/1.35 ${SANS}`, color: C.muted }}>{fmtLong(h.move_date)}</div>
-          </div>
-          <div
-            style={{
-              width: 46,
-              height: 46,
-              borderRadius: 14,
-              background: C.greenSoft,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flex: 'none',
-            }}
-          >
-            <div style={{ font: `700 16px/1 ${SANS}`, color: C.green }}>{chip.day}</div>
-            <div style={{ font: `500 8px ${MONO}`, letterSpacing: '.1em', color: C.green, marginTop: 2 }}>
-              {chip.month}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, flex: 'none' }}>
+              {/* Once the move is behind you the countdown is just a number
+                  climbing away from a day that no longer matters. */}
+              <button
+                onClick={() => store.setHideCountdown(true)}
+                aria-label="Aftelling verbergen"
+                title="Aftelling verbergen"
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: '50%',
+                  background: C.sand,
+                  color: C.ghost,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <svg aria-hidden width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+              </button>
+              <div
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 14,
+                  background: C.greenSoft,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <div style={{ font: `700 16px/1 ${SANS}`, color: C.green }}>{chip.day}</div>
+                <div style={{ font: `500 8px ${MONO}`, letterSpacing: '.1em', color: C.green, marginTop: 2 }}>
+                  {chip.month}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ height: 6, borderRadius: 99, background: C.line, overflow: 'hidden' }}>
             <div

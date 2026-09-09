@@ -17,11 +17,12 @@ import {
   normalizeEmail,
   type Session,
 } from './lib/supabase';
-import { todayISO } from './lib/dates';
+import { fmtShort, todayISO } from './lib/dates';
+import { nextDate } from './lib/repeat';
 import { nameFor } from './lib/derive';
 import { clearBlobs, deleteBlob, getBlob, putBlob } from './lib/blobs';
 import { MAX_BYTES, shrinkImage, storagePath } from './lib/images';
-import type { ActivityEntry, Attachment, Household, Party, PartyKind, Task, Who } from './types';
+import type { ActivityEntry, Attachment, Household, Party, PartyKind, Repeat, Task, Who } from './types';
 import type { CatKey } from './theme';
 
 const STORAGE_KEY = 'moov:v1';
@@ -50,6 +51,12 @@ interface Persisted {
    * own notification tray — reading it here doesn't clear it on your tablet.
    */
   readActivityAt: string;
+  /**
+   * Whether the countdown to the moving day is hidden. Deliberately per
+   * device and never synced: once the move is behind you the card is just
+   * noise, and which phone stops showing it is nobody else's business.
+   */
+  hideCountdown: boolean;
 }
 
 const EMPTY: Persisted = {
@@ -68,13 +75,37 @@ const EMPTY: Persisted = {
   deletedParties: [],
   pendingUploads: [],
   readActivityAt: new Date(0).toISOString(),
+  hideCountdown: false,
 };
+
+/**
+ * Fill in fields a row may predate. Tasks stored before `repeat` and `help`
+ * existed — on this device, or in a database that hasn't run the migration —
+ * come back without them, and `undefined` where the type promises `null` ends
+ * up in an upsert as "leave this column alone" rather than "it is empty".
+ */
+function normalizeTask(row: Task): Task {
+  return {
+    ...row,
+    amount: row.amount === null || row.amount === undefined ? null : Number(row.amount),
+    repeat: row.repeat ?? null,
+    help: row.help ?? null,
+  };
+}
 
 function load(): Persisted {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return EMPTY;
-    return { ...EMPTY, ...(JSON.parse(raw) as Partial<Persisted>) };
+    const parsed = JSON.parse(raw) as Partial<Persisted>;
+    const state = { ...EMPTY, ...parsed };
+    return {
+      ...state,
+      tasks: state.tasks.map(normalizeTask),
+      household: state.household
+        ? { ...state.household, calendar_token: state.household.calendar_token ?? null }
+        : null,
+    };
   } catch {
     return EMPTY;
   }
@@ -98,6 +129,7 @@ export interface NewTaskInput {
   note?: string | null;
   amount?: number | null;
   vendor?: string | null;
+  repeat?: Repeat | null;
 }
 
 interface Store extends Persisted {
@@ -141,7 +173,12 @@ interface Store extends Persisted {
   togglePick(key: string): void;
   reserveJob(jobId: string): void;
   updateHousehold(
-    patch: Partial<Pick<Household, 'address' | 'move_date' | 'name_a' | 'name_b' | 'invited_email'>>,
+    patch: Partial<
+      Pick<
+        Household,
+        'address' | 'move_date' | 'name_a' | 'name_b' | 'invited_email' | 'calendar_token'
+      >
+    >,
   ): void;
   /**
    * Mint a fresh join code and store it. The old code stops working at once,
@@ -158,6 +195,8 @@ interface Store extends Persisted {
   notifications: ActivityEntry[];
   /** Mark everything currently addressed to you as seen. */
   markNotificationsRead(): void;
+  /** Hide or restore the countdown card on Vandaag, on this device only. */
+  setHideCountdown(v: boolean): void;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -364,7 +403,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (deleted.has(row.id)) continue; // we deleted it while offline
           const local = byId.get(row.id);
           // a locally-changed row wins until it has been pushed
-          merged.push(dirty.has(row.id) && local ? local : { ...row, amount: row.amount === null ? null : Number(row.amount) });
+          merged.push(dirty.has(row.id) && local ? local : normalizeTask(row));
           byId.delete(row.id);
         }
         // rows we created offline that the server hasn't seen yet
@@ -405,7 +444,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
         return {
           ...prev,
-          household: (h.data as Household) ?? prev.household,
+          household: h.data
+            ? { ...(h.data as Household), calendar_token: (h.data as Household).calendar_token ?? null }
+            : prev.household,
           tasks: merged,
           parties: mergedParties,
           picks,
@@ -607,6 +648,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         name_a: yourName,
         name_b: partnerName,
         invited_email: partnerEmail?.trim() ? normalizeEmail(partnerEmail) : null,
+        calendar_token: null,
       };
       // A plan is never pre-filled: it starts empty, or with exactly what the
       // AI wizard produced from the answers the user gave.
@@ -694,6 +736,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const t = cur.tasks.find((x) => x.id === id);
       if (!t) return;
       const me = nameFor(cur.slot, cur.household);
+      // A recurring task is never finished, only handled for now: ticking it
+      // off moves it to its next date. Closing it would leave the list a
+      // graveyard of identical done rows, one per week, forever.
+      if (!t.done && t.repeat) {
+        const next = nextDate(t.date, t.repeat, todayISO());
+        touchTask(id, { date: next, done: false, done_by: null });
+        logActivity(`vinkte “${t.title}” af · staat weer op ${fmtShort(next)}`);
+        return;
+      }
       touchTask(id, { done: !t.done, done_by: !t.done ? me : null });
       if (!t.done) logActivity(`vinkte “${t.title}” af`);
     },
@@ -717,6 +768,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         amount: input.amount ?? null,
         vendor: input.vendor?.trim() || null,
         job_id: null,
+        repeat: input.repeat ?? null,
+        help: null,
         done: false,
         done_by: null,
         updated_at: new Date().toISOString(),
@@ -990,6 +1043,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     update((p) => ({ ...p, readActivityAt: new Date().toISOString() }));
   }, [update]);
 
+  const setHideCountdown = useCallback<Store['setHideCountdown']>(
+    (v) => {
+      update((p) => ({ ...p, hideCountdown: v }));
+    },
+    [update],
+  );
+
   const updateHousehold = useCallback<Store['updateHousehold']>(
     (patch) => {
       const cur = stateRef.current;
@@ -1073,6 +1133,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reassignTask,
       notifications,
       markNotificationsRead,
+      setHideCountdown,
       leave,
       deleteHousehold,
     };
@@ -1102,6 +1163,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     regenerateJoinCode,
     reassignTask,
     markNotificationsRead,
+    setHideCountdown,
     leave,
     deleteHousehold,
   ]);
