@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { C, MONO, SANS } from './theme';
 import { useStore } from './store';
 import { usePlan } from './lib/plan';
+import { useVisualViewport } from './lib/viewport';
 import { person } from './lib/derive';
 import { syncEnabled } from './lib/supabase';
 import { Avatar } from './components/ui';
@@ -39,10 +40,17 @@ export default function App() {
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
+  const vp = useVisualViewport();
   return (
     <div
       style={{
-        height: '100dvh',
+        // Not 100dvh: on iOS that still counts the strip the keyboard is
+        // sitting on, and everything inside gets scrolled up out of the screen
+        // to compensate. See useVisualViewport.
+        height: vp.height ?? '100dvh',
+        // only ever non-zero mid-animation, while the browser is still moving
+        // the visible area around
+        transform: vp.offsetTop ? `translateY(${vp.offsetTop}px)` : undefined,
         position: 'relative',
         display: 'flex',
         flexDirection: 'column',

@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { useEffect } from 'react';
 import { C, MONO, SANS, SHADOW } from '../theme';
+import { useVisualViewport } from '../lib/viewport';
 
 /** Small monospaced all-caps section label. */
 export function Eyebrow({ children, color = C.faint, style }: {
@@ -195,6 +196,13 @@ export function Sheet({ open, onClose, children, maxHeight = '86%' }: {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // With a keyboard up there is barely half a screen left, and a sheet that
+  // keeps back 8% for a scrim you cannot reach and 34px for a home indicator
+  // the keyboard is already covering costs you a whole field of the form.
+  // Anything smaller than this is the URL bar collapsing, not a keyboard.
+  const vp = useVisualViewport();
+  const keyboard = vp.keyboardInset > 120;
+
   if (!open) return null;
   return (
     <div
@@ -221,9 +229,9 @@ export function Sheet({ open, onClose, children, maxHeight = '86%' }: {
           position: 'relative',
           background: C.bg,
           borderRadius: '26px 26px 0 0',
-          padding: '12px 20px calc(34px + env(safe-area-inset-bottom))',
+          padding: keyboard ? '10px 20px 12px' : '12px 20px calc(34px + env(safe-area-inset-bottom))',
           animation: 'sheetUp .26s cubic-bezier(.22,1,.36,1)',
-          maxHeight,
+          maxHeight: keyboard ? '100%' : maxHeight,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -235,7 +243,7 @@ export function Sheet({ open, onClose, children, maxHeight = '86%' }: {
             height: 4,
             borderRadius: 99,
             background: '#D8D0C2',
-            margin: '0 auto 16px',
+            margin: keyboard ? '0 auto 10px' : '0 auto 16px',
             flex: 'none',
           }}
         />
