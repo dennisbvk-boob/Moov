@@ -27,6 +27,16 @@ import type { CatKey } from './theme';
 
 const STORAGE_KEY = 'moov:v1';
 
+/** Tables a change to which means the other phone needs to look again. */
+const SYNCED_TABLES = [
+  'tasks',
+  'parties',
+  'job_picks',
+  'job_reservations',
+  'activity',
+  'attachments',
+] as const;
+
 export type SyncStatus = 'local' | 'connecting' | 'synced' | 'offline';
 
 interface Persisted {
@@ -41,6 +51,14 @@ interface Persisted {
   dirtyTasks: string[];
   dirtyParties: string[];
   dirtyPicks: string[];
+  /**
+   * Activity rows written on this device that the server hasn't taken yet.
+   * They cannot be fire-and-forget: `activity.task_id` is a foreign key to
+   * `tasks`, so an entry about a brand-new task has to wait until that task
+   * itself has been pushed, and an entry written offline has to survive until
+   * there is a connection — otherwise the other phone never hears about it.
+   */
+  dirtyActivity: string[];
   deletedTasks: string[];
   deletedParties: string[];
   /** Attachment ids whose bytes are still only in this device's IndexedDB. */
@@ -71,6 +89,7 @@ const EMPTY: Persisted = {
   dirtyTasks: [],
   dirtyParties: [],
   dirtyPicks: [],
+  dirtyActivity: [],
   deletedTasks: [],
   deletedParties: [],
   pendingUploads: [],
@@ -91,6 +110,20 @@ function normalizeTask(row: Task): Task {
     repeat: row.repeat ?? null,
     help: row.help ?? null,
   };
+}
+
+/**
+ * The feed as both sides know it: what the server has, plus anything this
+ * device still owes it, newest first and capped like the query that feeds it.
+ */
+function mergeActivity(server: ActivityEntry[], prev: Persisted): ActivityEntry[] {
+  const pending = new Set(prev.dirtyActivity);
+  const seen = new Set(server.map((e) => e.id));
+  const mine = prev.activity.filter((e) => pending.has(e.id) && !seen.has(e.id));
+  if (!server.length && !mine.length) return prev.activity;
+  return [...server, ...mine]
+    .sort((x, y) => (x.created_at < y.created_at ? 1 : -1))
+    .slice(0, 20);
 }
 
 function load(): Persisted {
@@ -250,14 +283,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ── pushing local changes up ──────────────────────────────
   const pushing = useRef(false);
+  // A push that arrives mid-push used to be dropped on the floor and left to
+  // the 20-second heartbeat. Taps come faster than that.
+  const pushAgain = useRef(false);
   const flush = useCallback(async () => {
-    if (!supabase || pushing.current) return;
+    if (!supabase) return;
+    if (pushing.current) {
+      pushAgain.current = true;
+      return;
+    }
     const cur = stateRef.current;
     if (!cur.household) return;
     if (
       !cur.dirtyTasks.length &&
       !cur.dirtyParties.length &&
       !cur.dirtyPicks.length &&
+      !cur.dirtyActivity.length &&
       !cur.deletedTasks.length &&
       !cur.deletedParties.length &&
       !cur.pendingUploads.length
@@ -265,29 +306,73 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return;
 
     pushing.current = true;
-    try {
-      const sentTasks: string[] = [];
-      const sentParties: string[] = [];
-      const sentPicks: string[] = [];
-      const sentDeletes: string[] = [];
-      const sentPartyDeletes: string[] = [];
+    // Pushing is not instant, and the person holding the phone keeps tapping
+    // while it runs. Clearing a dirty flag by id would throw away an edit made
+    // during the round trip — the row would be marked clean with its newer
+    // version never sent, and the next pull would quietly overwrite it with
+    // what the server still has. So we remember the exact objects we sent and
+    // only mark those clean if they are still the current ones.
+    const sentTasks = new Map<string, Task>();
+    const sentParties = new Map<string, Party>();
+    const sentPicks = new Map<string, boolean>();
+    const sentActivity: string[] = [];
+    const sentDeletes: string[] = [];
+    const sentPartyDeletes: string[] = [];
+    let failed = false;
 
+    try {
       // parties first: tasks reference them by foreign key
       const partyRows = cur.parties.filter((x) => cur.dirtyParties.includes(x.id));
       if (partyRows.length) {
         const { error } = await supabase.from('parties').upsert(partyRows);
-        if (!error) sentParties.push(...partyRows.map((r) => r.id));
+        if (error) failed = true;
+        else for (const r of partyRows) sentParties.set(r.id, r);
       }
 
       if (cur.deletedTasks.length) {
         const { error } = await supabase.from('tasks').delete().in('id', cur.deletedTasks);
-        if (!error) sentDeletes.push(...cur.deletedTasks);
+        if (error) failed = true;
+        else sentDeletes.push(...cur.deletedTasks);
       }
 
       const rows = cur.tasks.filter((t) => cur.dirtyTasks.includes(t.id));
       if (rows.length) {
         const { error } = await supabase.from('tasks').upsert(rows);
-        if (!error) sentTasks.push(...rows.map((r) => r.id));
+        if (error) failed = true;
+        else for (const r of rows) sentTasks.set(r.id, r);
+      }
+
+      // Activity after the tasks, never before: an entry about a task that was
+      // just created carries that task's id, and the foreign key only holds
+      // once the task row itself is up.
+      const actRows = cur.activity.filter((e) => cur.dirtyActivity.includes(e.id));
+      if (actRows.length) {
+        const live = new Set(cur.tasks.map((t) => t.id));
+        // An entry about a task that has since been deleted can never satisfy
+        // the foreign key. Stop owing it rather than retrying it forever and
+        // holding every later entry behind it.
+        sentActivity.push(...actRows.filter((e) => e.task_id && !live.has(e.task_id)).map((e) => e.id));
+        const ready = actRows.filter(
+          (e) =>
+            !e.task_id ||
+            (live.has(e.task_id) &&
+              (sentTasks.has(e.task_id) || !cur.dirtyTasks.includes(e.task_id))),
+        );
+        if (ready.length) {
+          const { error } = await supabase.from('activity').upsert(
+            ready.map((e) => ({
+              id: e.id,
+              household_id: e.household_id,
+              actor: e.actor,
+              text: e.text,
+              created_at: e.created_at,
+              for_slot: e.for_slot,
+              task_id: e.task_id,
+            })),
+          );
+          if (error) failed = true;
+          else sentActivity.push(...ready.map((e) => e.id));
+        }
       }
 
       if (cur.dirtyPicks.length) {
@@ -298,13 +383,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updated_at: new Date().toISOString(),
         }));
         const { error } = await supabase.from('job_picks').upsert(picks);
-        if (!error) sentPicks.push(...cur.dirtyPicks);
+        if (error) failed = true;
+        else for (const row of picks) sentPicks.set(row.key, row.picked);
       }
 
       // parties last on the way out: the task rows referencing them go first
       if (cur.deletedParties.length) {
         const { error } = await supabase.from('parties').delete().in('id', cur.deletedParties);
-        if (!error) sentPartyDeletes.push(...cur.deletedParties);
+        if (error) failed = true;
+        else sentPartyDeletes.push(...cur.deletedParties);
       }
 
       // Attachments: push the bytes to Storage, then stamp the row with its path.
@@ -326,9 +413,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const up = await supabase.storage
           .from('bijlagen')
           .upload(path, blob, { contentType: att.mime ?? undefined, upsert: true });
-        if (up.error) break; // no signal or no permission — try again next tick
+        if (up.error) {
+          failed = true;
+          break; // no signal or no permission — try again next tick
+        }
         const row = await supabase.from('attachments').upsert({ ...att, path });
-        if (row.error) break;
+        if (row.error) {
+          failed = true;
+          break;
+        }
         uploaded.push(attId);
         update((p) => ({
           ...p,
@@ -336,31 +429,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
       }
 
-      const ok =
-        sentTasks.length ||
-        sentParties.length ||
-        sentPicks.length ||
-        sentDeletes.length ||
-        sentPartyDeletes.length ||
-        uploaded.length;
-      if (ok) {
-        update((p) => ({
-          ...p,
-          dirtyTasks: p.dirtyTasks.filter((id) => !sentTasks.includes(id)),
-          dirtyParties: p.dirtyParties.filter((id) => !sentParties.includes(id)),
-          dirtyPicks: p.dirtyPicks.filter((k) => !sentPicks.includes(k)),
-          deletedTasks: p.deletedTasks.filter((id) => !sentDeletes.includes(id)),
-          deletedParties: p.deletedParties.filter((id) => !sentPartyDeletes.includes(id)),
-          pendingUploads: p.pendingUploads.filter((id) => !uploaded.includes(id)),
-        }));
-      }
-      setStatus('synced');
+      update((p) => ({
+        ...p,
+        dirtyTasks: p.dirtyTasks.filter((id) => p.tasks.find((t) => t.id === id) !== sentTasks.get(id)),
+        dirtyParties: p.dirtyParties.filter(
+          (id) => p.parties.find((x) => x.id === id) !== sentParties.get(id),
+        ),
+        dirtyPicks: p.dirtyPicks.filter(
+          (k) => !sentPicks.has(k) || !!p.picks[k] !== sentPicks.get(k),
+        ),
+        dirtyActivity: p.dirtyActivity.filter((id) => !sentActivity.includes(id)),
+        deletedTasks: p.deletedTasks.filter((id) => !sentDeletes.includes(id)),
+        deletedParties: p.deletedParties.filter((id) => !sentPartyDeletes.includes(id)),
+        pendingUploads: p.pendingUploads.filter((id) => !uploaded.includes(id)),
+      }));
+      // A rejected write is not a synced plan. Saying "synced" through a failing
+      // push is how a task can sit on one phone for days without either of you
+      // having any reason to suspect it never left.
+      setStatus(failed ? 'offline' : 'synced');
     } catch {
       setStatus('offline');
     } finally {
       pushing.current = false;
+      if (pushAgain.current) {
+        pushAgain.current = false;
+        // after the state update above has been applied, so the retry sees it
+        window.setTimeout(() => void flushRef.current(), 120);
+      }
     }
   }, [update]);
+
+  // flush() needs to be able to call itself again; a ref keeps that from
+  // making the callback depend on itself.
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
 
   // ── pulling the server's view down ────────────────────────
   const pull = useCallback(async (householdId: string) => {
@@ -452,9 +554,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           picks,
           reserved,
           attachments,
-          activity: ((a.data ?? []) as ActivityEntry[]).length
-            ? (a.data as ActivityEntry[])
-            : prev.activity,
+          // Server feed, plus our own entries that haven't been accepted yet.
+          // Taking the server list wholesale used to erase them, so an entry
+          // whose write had failed vanished from the phone that wrote it too —
+          // no notification for your partner, and no trace for you either.
+          activity: mergeActivity((a.data ?? []) as ActivityEntry[], prev),
         };
       });
       setStatus('synced');
@@ -488,15 +592,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       display_name: nameFor(cur.slot, h),
       email: sess.email,
     });
-    if (cur.parties.length) await supabase.from('parties').upsert(cur.parties);
-    if (cur.tasks.length) await supabase.from('tasks').upsert(cur.tasks);
+    const par = cur.parties.length
+      ? await supabase.from('parties').upsert(cur.parties)
+      : { error: null };
+    const tsk = cur.tasks.length
+      ? await supabase.from('tasks').upsert(cur.tasks)
+      : { error: null };
     const picks = Object.entries(cur.picks).map(([key, picked]) => ({
       household_id: h.id,
       key,
       picked,
     }));
-    if (picks.length) await supabase.from('job_picks').upsert(picks);
-    update((p) => ({ ...p, dirtyTasks: [], dirtyParties: [], dirtyPicks: [] }));
+    const pck = picks.length ? await supabase.from('job_picks').upsert(picks) : { error: null };
+    // Only what actually landed counts as sent. What didn't stays queued for
+    // flush() rather than being declared clean and forgotten.
+    update((p) => ({
+      ...p,
+      dirtyTasks: tsk.error ? [...new Set([...p.dirtyTasks, ...cur.tasks.map((t) => t.id)])] : [],
+      dirtyParties: par.error
+        ? [...new Set([...p.dirtyParties, ...cur.parties.map((x) => x.id)])]
+        : [],
+      dirtyPicks: pck.error ? [...new Set([...p.dirtyPicks, ...picks.map((x) => x.key)])] : [],
+    }));
   }, [update]);
 
   // ── boot: session, first pull, realtime, reconnect handling ──
@@ -524,17 +641,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await flush();
         if (cancelled) return;
 
-        channel = supabase!
-          .channel(`household:${hid}`)
-          .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', filter: `household_id=eq.${hid}` },
-            () => void pull(hid),
-          )
-          .subscribe((st) => {
-            if (st === 'SUBSCRIBED') setStatus('synced');
-            if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') setStatus('offline');
-          });
+        // One binding per table. A `filter` is only meaningful alongside the
+        // `table` it belongs to — asking for a whole schema and filtering it by
+        // a column is not something the server can honour, and the whole
+        // channel errors out, which is a live plan that silently stops being
+        // live until someone reopens the app.
+        channel = SYNCED_TABLES.reduce(
+          (ch, table) =>
+            ch.on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table, filter: `household_id=eq.${hid}` },
+              () => void pull(hid),
+            ),
+          supabase!.channel(`household:${hid}`),
+        ).subscribe((st) => {
+          if (st === 'SUBSCRIBED') {
+            setStatus('synced');
+            // Anything that changed while we were not listening never fired an
+            // event at us, so take a fresh look rather than trusting the gap.
+            void pull(hid);
+          }
+          if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT' || st === 'CLOSED') setStatus('offline');
+        });
       }
       setReady(true);
     })();
@@ -546,19 +674,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // re-run when the household or the logged-in account changes
   }, [s.household?.id, session, pull, flush, adopt]);
 
-  // Retry unsent changes when the tab wakes up or the network returns.
+  // Retry unsent changes when the tab wakes up or the network returns — and
+  // look at what the other phone did while this one was asleep. A pushed-only
+  // heartbeat left the live channel as the sole way anything ever came *down*;
+  // one dropped socket, and a phone could sit on a stale plan indefinitely
+  // while cheerfully reporting itself synced.
   useEffect(() => {
     if (!syncEnabled) return;
-    const kick = () => void flush();
+    const kick = () => {
+      if (document.visibilityState === 'hidden') return;
+      const hid = stateRef.current.household?.id;
+      void flush();
+      if (hid) void pull(hid);
+    };
     const timer = window.setInterval(kick, 20000);
     window.addEventListener('online', kick);
+    window.addEventListener('focus', kick);
     document.addEventListener('visibilitychange', kick);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener('online', kick);
+      window.removeEventListener('focus', kick);
       document.removeEventListener('visibilitychange', kick);
     };
-  }, [flush]);
+  }, [flush, pull]);
 
   // Fire a push shortly after any local mutation.
   const nudge = useCallback(() => {
@@ -582,19 +721,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         for_slot: target?.forSlot ?? null,
         task_id: target?.taskId ?? null,
       };
-      update((p) => ({ ...p, activity: [entry, ...p.activity].slice(0, 20) }));
-      if (supabase) {
-        void supabase.from('activity').insert({
-          id: entry.id,
-          household_id: entry.household_id,
-          actor,
-          text,
-          for_slot: entry.for_slot,
-          task_id: entry.task_id,
-        });
-      }
+      update((p) => {
+        const activity = [entry, ...p.activity].slice(0, 20);
+        const kept = new Set(activity.map((e) => e.id));
+        return {
+          ...p,
+          activity,
+          // an entry pushed out of the window can no longer be sent, so stop
+          // counting it as owed
+          dirtyActivity: [...p.dirtyActivity, entry.id].filter((id) => kept.has(id)),
+        };
+      });
+      // Sent by flush(), after the task it may point at. Firing it from here
+      // raced the task's own upsert and lost: activity.task_id is a foreign key,
+      // so the row about a task you had just created was rejected outright.
+      nudge();
     },
-    [update],
+    [update, nudge],
   );
 
   /**
@@ -655,18 +798,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const parties: Party[] = [];
       const tasks: Task[] = aiTasks ?? [];
 
+      // Whether the opening rows actually landed. The plan used to be marked
+      // fully synced the moment it was created, errors unread — so a rejected
+      // insert left the wizard's tasks clean, un-queued and invisible to the
+      // other phone for good, with nothing on screen to say so.
+      let pushed = false;
       if (supabase && session) {
         const { error } = await supabase.from('households').insert(household);
         if (error) throw new Error(error.message);
-        await supabase.from('members').insert({
+        const mem = await supabase.from('members').insert({
           household_id: id,
           user_id: session.userId,
           slot: 'a',
           display_name: yourName,
           email: session.email,
         });
-        await supabase.from('parties').insert(parties);
-        await supabase.from('tasks').insert(tasks);
+        const par = parties.length
+          ? await supabase.from('parties').insert(parties)
+          : { error: null };
+        const tsk = tasks.length ? await supabase.from('tasks').insert(tasks) : { error: null };
+        pushed = !mem.error && !par.error && !tsk.error;
+        if (!pushed) setStatus('offline');
       }
 
       update((p) => ({
@@ -678,14 +830,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         picks: {},
         reserved: {},
         activity: [],
-        dirtyTasks: supabase && session ? [] : tasks.map((t) => t.id),
-        dirtyParties: supabase && session ? [] : parties.map((p) => p.id),
+        dirtyActivity: [],
+        dirtyTasks: pushed ? [] : tasks.map((t) => t.id),
+        dirtyParties: pushed ? [] : parties.map((p) => p.id),
         dirtyPicks: [],
         deletedTasks: [],
         deletedParties: [],
       }));
+      // anything the creation call couldn't place is now queued; try again
+      if (!pushed) nudge();
     },
-    [update, session],
+    [update, session, nudge],
   );
 
   const joinHousehold = useCallback<Store['joinHousehold']>(
