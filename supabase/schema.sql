@@ -378,3 +378,15 @@ begin
   execute 'alter publication supabase_realtime add table households';
 exception when duplicate_object then null;
 end $$;
+
+-- A DELETE only broadcasts the columns Postgres kept for replication, which by
+-- default is the primary key alone. Both phones subscribe filtered on
+-- household_id, and a row that arrives without one matches no filter — so a
+-- task deleted on one phone never reached the other until the app was reopened.
+-- Replicating the full old row gives the filter something to match.
+alter table tasks            replica identity full;
+alter table parties          replica identity full;
+alter table job_picks        replica identity full;
+alter table job_reservations replica identity full;
+alter table activity         replica identity full;
+alter table attachments      replica identity full;
